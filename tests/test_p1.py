@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -107,6 +108,91 @@ def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -
     digest_before = hashlib.sha256(feed_path.read_bytes()).hexdigest()
     pipeline.generate_offer(offer_id, "campaign-a")
     assert hashlib.sha256(feed_path.read_bytes()).hexdigest() == digest_before
+
+
+def test_local_hook_enters_video_package_without_changing_facts_and_is_reused(tmp_path: Path) -> None:
+    class Provider:
+        calls = 0
+
+        def suggest_hook(self, title: str, category: str, channel: str) -> str:
+            self.calls += 1
+            return "Conheça os detalhes deste produto"
+
+    settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg"))
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    provider = Provider()
+    pipeline = P1Pipeline(
+        db, settings,
+        CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product),
+        provider=provider,
+    )
+
+    pipeline.generate_offer(offer_id, "hook-test")
+    payload = json.loads(db.rows(
+        "SELECT payload_json FROM content_packages WHERE channel='instagram' AND format='reel'"
+    )[0]["payload_json"])
+    assert payload["editorial_hook"]["text"] == "Conheça os detalhes deste produto"
+    assert payload["editorial_hook"]["source"] != "template"
+    assert payload["script"][0]["text"] == "Conheça os detalhes deste produto"
+    assert "Fone sem fio" in payload["caption"]
+    assert "R$ 90,00" in payload["caption"]
+    assert "#publi" in payload["caption"]
+
+    pipeline.generate_offer(offer_id, "hook-test")
+    assert provider.calls == 1
+
+
+def test_invalid_local_hook_falls_back_inside_package(tmp_path: Path) -> None:
+    class Provider:
+        def suggest_hook(self, title: str, category: str, channel: str) -> str:
+            return "Só hoje 70% OFF, duas unidades em estoque"
+
+    settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg"))
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    pipeline = P1Pipeline(
+        db, settings,
+        CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product),
+        provider=Provider(),
+    )
+
+    pipeline.generate_offer(offer_id, "invalid-hook-test")
+    payload = json.loads(db.rows(
+        "SELECT payload_json FROM content_packages WHERE channel='instagram' AND format='reel'"
+    )[0]["payload_json"])
+    assert payload["editorial_hook"]["source"] == "template"
+    assert payload["editorial_hook"]["fallback_reason"] == "SUGGESTION_REJECTED"
+    assert payload["script"][0]["text"] == "Fone sem fio"
+    assert "70%" not in json.dumps(payload)
+
+
+def test_ffmpeg_uses_the_shared_heavy_work_slot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    executable = tmp_path / "ffmpeg"
+    executable.touch()
+    active = False
+
+    @contextmanager
+    def locked():
+        nonlocal active
+        active = True
+        try:
+            yield
+        finally:
+            active = False
+
+    def fake_run(*args, **kwargs):
+        assert active
+
+    monkeypatch.setattr("app.services.media.heavy_work_slot", locked)
+    monkeypatch.setattr("app.services.media.subprocess.run", fake_run)
+    result = CreativeGenerator(tmp_path, ffmpeg_path=str(executable))._video(
+        (tmp_path / "frame.png",), (1.0,), tmp_path / "video.mp4",
+    )
+    assert result.status == "READY"
+    assert not active
 
 
 def test_offer_hub_search_and_page_require_conscious_click_and_escape_html(tmp_path: Path) -> None:

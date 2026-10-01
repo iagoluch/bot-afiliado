@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
+import tempfile
+import threading
+import unicodedata
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - available on the Lubuntu target, absent on Windows.
+    fcntl = None
 
 from app.config import Settings
 from app.services.compliance import validate_distribution, validate_offer
@@ -26,6 +38,146 @@ class TemplateProvider:
             "tiktok": "Olha este produto",
             "site": "Confira os detalhes do produto",
         }[channel]
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+_LOCAL_HTTP_OPENER = build_opener(ProxyHandler({}), _NoRedirect())
+_HEAVY_WORK_LOCK = threading.Lock()
+
+
+def _local_urlopen(request: Request, *, timeout: float):
+    return _LOCAL_HTTP_OPENER.open(request, timeout=timeout)
+
+
+@contextmanager
+def heavy_work_slot():
+    """Serialize Ollama/FFmpeg work in-process and, on Linux, across user processes."""
+    with _HEAVY_WORK_LOCK:
+        user_id = os.getuid() if hasattr(os, "getuid") else "windows"
+        lock_path = Path(tempfile.gettempdir()) / f"bot-afiliado-heavy-work-{user_id}.lock"
+        with lock_path.open("a+b") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+class OllamaProvider:
+    """Local-only Ollama client with a single in-flight inference per process."""
+
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:11434",
+        model: str = "qwen3.5:2b",
+        *,
+        timeout_seconds: int = 120,
+        context_length: int = 1024,
+        temperature: float = 0.3,
+        keep_alive: str = "2m",
+        output_limit: int = 2048,
+    ):
+        parsed = urlsplit(base_url.rstrip("/"))
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "::1"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+        ):
+            raise ValueError("OLLAMA_BASE_URL deve apontar para um endereco HTTP loopback")
+        if not model.strip():
+            raise ValueError("OLLAMA_MODEL nao pode ser vazio")
+        if timeout_seconds <= 0 or context_length <= 0 or output_limit <= 0:
+            raise ValueError("limites do Ollama devem ser positivos")
+        if not 0.0 <= temperature <= 2.0:
+            raise ValueError("temperatura do Ollama fora do intervalo permitido")
+        if not keep_alive.strip():
+            raise ValueError("keep_alive do Ollama nao pode ser vazio")
+        self.base_url = base_url.rstrip("/")
+        self.model = model.strip()
+        self.timeout_seconds = timeout_seconds
+        self.context_length = context_length
+        self.temperature = temperature
+        self.keep_alive = keep_alive.strip()
+        self.output_limit = output_limit
+
+    def health(self) -> bool:
+        """Return whether Ollama is reachable and the configured model is installed."""
+        request = Request(f"{self.base_url}/api/tags", method="GET")
+        try:
+            with _local_urlopen(request, timeout=min(float(self.timeout_seconds), 1.0)) as response:
+                raw = response.read(65_537)
+            if len(raw) > 65_536:
+                return False
+            payload = json.loads(raw.decode("utf-8"))
+            models = payload.get("models") if isinstance(payload, dict) else None
+            if not isinstance(models, list):
+                return False
+            return any(
+                isinstance(item, dict)
+                and (item.get("name") == self.model or item.get("model") == self.model)
+                for item in models
+            )
+        except (OSError, TimeoutError, UnicodeDecodeError, ValueError):
+            return False
+
+    def suggest_hook(self, title: str, category: str, channel: str) -> str:
+        del title, category  # Untrusted marketplace text must not enter the prompt.
+        safe_channel = channel if channel in {
+            "telegram", "instagram_feed", "instagram_story", "instagram_reel", "tiktok", "site"
+        } else "canal editorial"
+        prompt = (
+            "Escreva somente uma frase curta em portugues para abrir um rascunho editorial. "
+            "Use apenas uma chamada generica no imperativo, sem afirmar qualquer caracteristica do produto. "
+            "Nao use numeros, precos, percentuais, cupons, links, estoque, frete, urgencia, comparacoes, "
+            "qualidade, beneficio, hashtags ou emojis. Uma linha, sem aspas. "
+            f"Canal: {safe_channel}. Frase:"
+        )
+        payload = json.dumps(
+            {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "think": False,
+                "keep_alive": self.keep_alive,
+                "options": {
+                    "num_ctx": self.context_length,
+                    "temperature": self.temperature,
+                    "num_predict": 64,
+                },
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        request = Request(
+            f"{self.base_url}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        with heavy_work_slot():
+            with _local_urlopen(request, timeout=self.timeout_seconds) as response:
+                raw = response.read(65_537)
+        if len(raw) > 65_536:
+            raise ValueError("resposta do Ollama excedeu o limite")
+        try:
+            result = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("resposta invalida do Ollama") from exc
+        text = result.get("response") if isinstance(result, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("resposta invalida do Ollama")
+        if len(text) > self.output_limit:
+            raise ValueError("saida do Ollama excedeu o limite")
+        return text.strip()
 
 
 class LlamaCppProvider:
@@ -66,23 +218,66 @@ class LlamaCppProvider:
 
 
 _UNVERIFIED_CLAIM = re.compile(
-    r"[\d%$]|https?://|\b(?:pre[cç]o|desconto|off|estoque|esgot|unidade|frete|"
+    r"[\d%$]|https?://|www\.|\b(?:pre[cç]o|desconto|off|estoque|esgot|unidade|frete|"
     r"entrega|cupom|gr[aá]tis|imperd[ií]vel|[uú]ltim|hoje|agora|garantid|"
-    r"melhor|benef[ií]cio|qualidade)\b",
+    r"melhor|benef[ií]cio|qualidade|promo[cç][aã]o|econom|barat|exclusiv|"
+    r"lan[cç]amento|novo|novidade|aut[eê]ntic|original|oficial)\w*\b",
     re.IGNORECASE,
 )
 
+_SAFE_HOOK_OPENINGS = {"confira", "veja", "conheça", "descubra", "explore", "olha", "saiba"}
+_SAFE_HOOK_WORDS = _SAFE_HOOK_OPENINGS | {
+    "a", "as", "da", "desta", "deste", "detalhes", "do", "em", "essa", "esse", "esta",
+    "este", "item", "mais", "na", "no", "o", "oferta", "opção", "os", "produto", "sobre",
+    "um", "uma", "destaque",
+}
 
-def _safe_hook(value: str) -> str | None:
-    hook = value.strip().strip('"\'').strip()
+
+def validated_hook(value: str) -> str | None:
+    """Accept only generic imperative hooks; reject all factual vocabulary."""
+    if not isinstance(value, str):
+        return None
+    hook = unicodedata.normalize("NFC", value).strip().strip('"\'').strip()
     if not hook or len(hook) > 140 or "\n" in hook or "\r" in hook:
         return None
     if _UNVERIFIED_CLAIM.search(hook):
         return None
+    if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ\s,.!?]+", hook):
+        return None
+    words = re.findall(r"[^\W\d_]+", hook.casefold(), flags=re.UNICODE)
+    if not words or words[0] not in _SAFE_HOOK_OPENINGS or any(word not in _SAFE_HOOK_WORDS for word in words):
+        return None
     return hook
 
 
-def provider_from_env() -> LLMProvider:
+_safe_hook = validated_hook
+
+
+def _provider_source(provider: LLMProvider) -> str:
+    if isinstance(provider, OllamaProvider):
+        return "ollama"
+    if isinstance(provider, LlamaCppProvider):
+        return "llama.cpp"
+    if isinstance(provider, TemplateProvider):
+        return "template"
+    return "local"
+
+
+def provider_from_env(settings: Settings | None = None) -> LLMProvider:
+    settings = settings or Settings.from_env()
+    try:
+        ollama = OllamaProvider(
+            settings.ollama_base_url,
+            settings.ollama_model,
+            timeout_seconds=settings.ollama_timeout_seconds,
+            context_length=settings.ollama_context_length,
+            temperature=settings.ollama_temperature,
+            keep_alive=settings.ollama_keep_alive,
+        )
+        if ollama.health():
+            return ollama
+    except ValueError:
+        pass
     cli_path = os.getenv("LLAMA_CLI_PATH", "").strip()
     model_path = os.getenv("LLAMA_MODEL_PATH", "").strip()
     if cli_path and model_path:
@@ -91,6 +286,38 @@ def provider_from_env() -> LLMProvider:
         except ValueError:
             pass
     return TemplateProvider()
+
+
+def safe_hook(
+    offer: dict, channel: str, *, provider: LLMProvider | None = None
+) -> tuple[str, str, str | None]:
+    """Generate a non-factual hook and fail closed to a deterministic template."""
+    template = TemplateProvider()
+    selected = provider or provider_from_env()
+    if isinstance(selected, TemplateProvider):
+        return (
+            template.suggest_hook(str(offer.get("title") or ""), str(offer.get("category") or ""), channel),
+            "template",
+            "LOCAL_MODEL_NOT_CONFIGURED_OR_MISSING",
+        )
+    try:
+        hook = validated_hook(
+            selected.suggest_hook(
+                str(offer.get("title") or ""), str(offer.get("category") or ""), channel
+            )
+        )
+    except Exception:
+        hook = None
+        fallback_reason = "LOCAL_GENERATION_FAILED"
+    else:
+        fallback_reason = None if hook is not None else "SUGGESTION_REJECTED"
+    if hook is not None:
+        return hook, _provider_source(selected), None
+    return (
+        template.suggest_hook(str(offer.get("title") or ""), str(offer.get("category") or ""), channel),
+        "template",
+        fallback_reason,
+    )
 
 
 def copy_preview(
@@ -114,24 +341,7 @@ def copy_preview(
         item for item in build_content_specs(offer, destination, telegram_url=destination)
         if (item.channel, item.format) == target
     )
-    selected = provider or provider_from_env()
-    template = TemplateProvider()
-    hook = None
-    source = "template"
-    fallback_reason = None
-    if not isinstance(selected, TemplateProvider):
-        try:
-            hook = _safe_hook(selected.suggest_hook(str(offer["title"]), str(offer.get("category") or ""), channel))
-        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
-            fallback_reason = "LOCAL_GENERATION_FAILED"
-        if hook is not None:
-            source = "llama.cpp"
-        elif fallback_reason is None:
-            fallback_reason = "SUGGESTION_REJECTED"
-    if hook is None:
-        hook = template.suggest_hook(str(offer["title"]), str(offer.get("category") or ""), channel)
-        if fallback_reason is None:
-            fallback_reason = "LOCAL_MODEL_NOT_CONFIGURED_OR_MISSING"
+    hook, source, fallback_reason = safe_hook(offer, channel, provider=provider)
     return {
         "status": "REVIEW_ONLY",
         "source": source,

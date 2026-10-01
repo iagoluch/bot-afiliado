@@ -22,6 +22,7 @@ from app.services.content import brl
 from app.services.content import verified_discount
 from app.services.curation import verified_offer_data
 from app.services.site import offer_id_from_slug, offer_slug
+from app.worker import runtime_status
 
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -120,8 +121,11 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
         return await call_next(request)
 
     @app.get("/health")
-    def health() -> dict:
-        return {"status": "ok", "dry_run": settings.dry_run}
+    def health(details: bool = Query(default=False)) -> dict:
+        basic = {"status": "ok", "dry_run": settings.dry_run}
+        if not details:
+            return basic
+        return {**basic, "runtime": runtime_status(db, settings)}
 
     @app.get("/api/overview")
     def overview_api() -> dict:

@@ -1,10 +1,17 @@
 # Status atual
 
-Data: 01/10/2026. Componentes locais P0 a P3 implementados e validados sem publicação social externa; o MVP real ainda depende de acessos e aprovações.
+Data: 01/10/2026. Componentes P0 a P3 e runtime local para Lubuntu implementados e validados offline sem publicação social externa; o MVP real ainda depende de acessos e aprovações.
 
 Repositório GitHub privado: https://github.com/iagoluch/bot-afiliado (`main`).
 
-A automação de retomada foi pausada em 01/10/2026 após concluir as etapas locais executáveis sem acesso externo. Para validar o MVP real faltam aprovação e credenciais Shopee, token/chat e canal Telegram aprovado, domínio HTTPS público aprovado e export oficial de conversões. Instagram/TikTok e demais programas têm aprovações próprias descritas abaixo. Nenhum envio real foi feito.
+A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP real faltam aprovação e credenciais Shopee, token/chat e canal Telegram aprovado, domínio HTTPS público aprovado e export oficial de conversões. Instagram/TikTok e demais programas têm aprovações próprias descritas abaixo. Nenhum envio real foi feito.
+
+## Runtime Lubuntu 24/7
+
+- `OllamaProvider` local usa `qwen3.5:2b`, `think=false`, contexto 1024, temperatura 0.3 e keep-alive 2m; resposta fora da linguagem genérica permitida ou falha volta ao template. O P1 grava o hook seguro no ContentPackage de vídeo; fatos, captions, score e compliance permanecem em Python. Um lock compartilhado serializa Ollama e FFmpeg entre processos no Linux.
+- `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT estão implementados. Jobs P1 nascem com o upsert, são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
+- `runtime-status` e `/health?details=true` mostram apenas banco, worker/heartbeat/ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN. `scripts/*.sh` e templates systemd usam caminhos do clone e usuário normal. A web permanece em `127.0.0.1:8000`.
+- Validação neste host Windows: suíte completa com **157 testes aprovados** em 01/10/2026; E2E offline cobriu sample, ingestão, curadoria, fila `SIMULATED`, ContentPackage, assets locais, idle, heartbeat e restart. `bash -n` passou nos cinco scripts Linux. As units foram revisadas estaticamente; systemd e Ollama/Qwen reais no Acer ainda não foram executados neste host.
 
 | COMPONENT | STATUS | TESTED | EXTERNAL DEPENDENCY | NEXT ACTION |
 |---|---|---|---|---|

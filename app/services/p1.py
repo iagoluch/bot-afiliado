@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.db import Database
 from app.services.compliance import distribution_review, merchant_key, validate_content, validate_offer
 from app.services.content import telegram_tracking_url
 from app.services.curation import score_offer, verified_offer_data
+from app.services.llm import LLMProvider, safe_hook, validated_hook
 from app.services.media import CreativeAssets, CreativeGenerator
 from app.services.site import offer_slug
 from app.services.social_content import ContentSpec, build_content_specs
@@ -22,9 +24,13 @@ TIKTOK_POLICY_ACTION = (
 
 
 class P1Pipeline:
-    def __init__(self, db: Database, settings: Settings, generator: CreativeGenerator | None = None):
+    def __init__(
+        self, db: Database, settings: Settings, generator: CreativeGenerator | None = None,
+        *, provider: LLMProvider | None = None,
+    ):
         self.db = db
         self.settings = settings
+        self.provider = provider
         self.generator = generator or CreativeGenerator(
             settings.creatives_path,
             ffmpeg_path=settings.ffmpeg_path,
@@ -67,6 +73,28 @@ class P1Pipeline:
             paths = []
         return self._relative_assets(paths), video_detail
 
+    def _editorial_hook(
+        self, offer: dict[str, Any], reel: ContentSpec, campaign_id: str,
+    ) -> tuple[str, str, str | None]:
+        # A chave existente preserva o mesmo texto em reexecucoes idempotentes.
+        rows = self.db.rows(
+            "SELECT payload_json FROM content_packages WHERE content_key=?",
+            (self._content_key(offer, reel, campaign_id),),
+        )
+        if rows:
+            try:
+                saved = json.loads(rows[0]["payload_json"]).get("editorial_hook", {})
+                value = saved.get("text")
+                source = saved.get("source")
+                if isinstance(value, str) and isinstance(source, str):
+                    valid = validated_hook(value)
+                    if valid is not None:
+                        reason = saved.get("fallback_reason")
+                        return valid, source, reason if isinstance(reason, str) else None
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return safe_hook(offer, "instagram_reel", provider=self.provider)
+
     def generate_offer(self, offer_id: int, campaign_id: str = "organic", *, duration_scale: float = 1.0) -> dict[str, Any]:
         row = self.db.get_offer(offer_id)
         if row is None:
@@ -93,6 +121,17 @@ class P1Pipeline:
         destination_url = f"{self.settings.public_base_url}/o/{offer_slug(offer)}"
         telegram_url = offer["affiliate_url"] if merchant_key(offer) == "amazon" else telegram_tracking_url(self.settings.public_base_url, offer_id, campaign_id)
         specs = build_content_specs(offer, destination_url, telegram_url=telegram_url)
+        reel = next(spec for spec in specs if spec.format == "reel")
+        hook, hook_source, fallback_reason = self._editorial_hook(offer, reel, campaign_id)
+        editorial_hook = {"text": hook, "source": hook_source, "fallback_reason": fallback_reason}
+        if hook_source != "template":
+            specs = tuple(
+                replace(spec, script=tuple(
+                    {**scene, "text": hook} if scene.get("role") == "hook" else scene
+                    for scene in spec.script
+                )) if spec.format in {"reel", "vertical_video"} else spec
+                for spec in specs
+            )
         for spec in specs:
             validate_content(spec.caption, allow_http=self.settings.dry_run)
         reel = next(spec for spec in specs if spec.format == "reel")
@@ -108,6 +147,8 @@ class P1Pipeline:
         for spec in specs:
             package_assets, video_detail = self._assets_for(spec, assets)
             payload = spec.payload(destination_url=destination_url)
+            if spec.format in {"reel", "vertical_video"}:
+                payload["editorial_hook"] = editorial_hook
             if spec.channel == "tiktok":
                 payload["distribution"] = "LOCAL_DRAFT_REQUIRES_POLICY_REVIEW"
             content_id = self.db.add_content(

@@ -31,6 +31,32 @@ def _json_object_env(name: str) -> dict:
     return value
 
 
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} deve ser um numero inteiro") from exc
+    if value < minimum:
+        raise ValueError(f"{name} deve ser maior ou igual a {minimum}")
+    return value
+
+
+def _float_env(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} deve ser um numero") from exc
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} deve estar entre {minimum} e {maximum}")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     database_path: Path
@@ -56,10 +82,17 @@ class Settings:
     instagram_asset_allowed_hosts: tuple[str, ...] = ()
     instagram_container_api_enabled: bool = False
     instagram_facebook_login_ready: bool = False
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3.5:2b"
+    ollama_timeout_seconds: int = 120
+    ollama_context_length: int = 1024
+    ollama_temperature: float = 0.3
+    ollama_keep_alive: str = "2m"
+    ollama_think: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
-        return cls(
+        settings = cls(
             database_path=Path(os.getenv("DATABASE_PATH", "data/affiliate.db")),
             dry_run=_bool_env("DRY_RUN", True),
             public_base_url=os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000").rstrip("/"),
@@ -105,4 +138,18 @@ class Settings:
             ),
             instagram_container_api_enabled=_bool_env("INSTAGRAM_REEL_CONTAINER_API_ENABLED", False),
             instagram_facebook_login_ready=_bool_env("INSTAGRAM_FACEBOOK_LOGIN_READY", False),
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:2b").strip(),
+            ollama_timeout_seconds=_int_env("OLLAMA_TIMEOUT_SECONDS", 120),
+            ollama_context_length=_int_env("OLLAMA_CONTEXT_LENGTH", 1024),
+            ollama_temperature=_float_env("OLLAMA_TEMPERATURE", 0.3, minimum=0.0, maximum=2.0),
+            ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "2m").strip(),
+            ollama_think=_bool_env("OLLAMA_THINK", False),
         )
+        if settings.ollama_think:
+            raise ValueError("OLLAMA_THINK deve permanecer false neste hardware")
+        if not settings.ollama_model:
+            raise ValueError("OLLAMA_MODEL nao pode ser vazio")
+        if not settings.ollama_keep_alive:
+            raise ValueError("OLLAMA_KEEP_ALIVE nao pode ser vazio")
+        return settings

@@ -1,6 +1,6 @@
-# Arquitetura P0 a P3
+# Arquitetura local P0 a P3 e runtime Lubuntu
 
-Monólito Python local com SQLite e jobs curtos. Não usa Docker ou navegador. Pillow renderiza imagens e FFmpeg é um executável configurável, usado somente quando instalado. O preview editorial pode usar llama.cpp local; operação, score e publicação não dependem de LLM.
+Monólito Python local com SQLite, worker contínuo e web separada. Não usa Docker ou navegador. Pillow renderiza imagens e FFmpeg é um executável configurável, usado somente quando instalado. Ollama/Qwen local pode sugerir um hook genérico para o ContentPackage; operação, score e publicação não dependem de LLM.
 
 ```text
 Fontes oficiais/assistidas
@@ -38,7 +38,8 @@ Fontes oficiais/assistidas
 - `app/services/compliance.py`: revalida preço, estoque e cupom antes de gerar conteúdo.
 - `app/services/pipeline.py`: pipeline P0 e estados da fila Telegram.
 - `app/services/social_content.py`: copy, roteiro e hashtags específicos por canal.
-- `app/services/llm.py`: interface `LLMProvider`, sugestão local opcional de hook via llama.cpp e fallback determinístico; apenas preview editorial, sem persistência ou publicação.
+- `app/services/llm.py`: `OllamaProvider` HTTP em loopback, fallback llama.cpp/template e validação conservadora de hook; a IA não calcula fatos nem controla publicação.
+- `app/worker.py`: loop único de `run_tick`, geração P1 sequencial por oferta, lock exclusivo, heartbeat SQLite e backoff.
 - `app/services/media.py`: imagens determinísticas, download restrito de imagem oficial e chamada segura ao FFmpeg sem shell.
 - `app/services/p1.py`: orquestra criativos e estados da fila social.
 - `app/services/instagram_graph.py`: cliente fixo da Meta e máquina de estados somente para Reels; token fica no header e falha ambígua nunca é repetida automaticamente.
@@ -98,7 +99,13 @@ Admitad permanece `WAITING_FOR_REAL_EXPORT`: só `import-offers --adapter admita
 
 ## IA auxiliar opcional
 
-`copy-preview` lê uma oferta válida e mostra a copy canônica, roteiro e hashtags determinísticos com uma sugestão de hook. `LLMProvider` tem implementação `LlamaCppProvider` e fallback `TemplateProvider`; nenhum deles entra no pipeline de curadoria, tracking, compliance ou publicação. A sugestão local é recusada se incluir número, URL ou palavras de preço/desconto/estoque/urgência, e permanece marcada `REVIEW_ONLY`. O controle editorial continua humano. `LLAMA_CLI_PATH` e `LLAMA_MODEL_PATH` devem apontar para arquivos locais existentes; sem eles, o template funciona sem instalação adicional. Provider remoto fica pendente de contrato, política de dados e configuração explícita, sem chamadas de rede nesta versão.
+`copy-preview` continua leitura sem persistência. O P1 usa no máximo um hook genérico validado por oferta/campanha, reaproveita o resultado persistido na mesma chave idempotente e o aplica apenas à cena inicial de vídeo. Legenda, preço, desconto, cupom, estoque, URLs, disclosure, score e compliance vêm dos templates e dados verificados em Python. Saída com números, URL ou vocabulário factual não permitido é recusada; falha ou timeout volta ao `TemplateProvider`. O provider preferido é Ollama/Qwen no loopback, seguido do llama.cpp local quando configurado; sem os dois, o template funciona. O worker chama a IA antes de renderizar com FFmpeg, sequencialmente. A IA não acessa banco, shell, scheduler nem publisher.
+
+## Worker e observabilidade no Lubuntu
+
+`app.worker` mantém um lock local exclusivo durante toda a execução. Em cada tick, `run_tick` processa um slot de ingestão ou um item da fila persistente; após um ciclo, o P1 gera ContentPackages e assets por oferta, isolando falhas individuais. Idle dorme 30 s por padrão; falhas repetidas usam backoff progressivo. O heartbeat e último ciclo ficam em SQLite e são lidos por `runtime-status`; a consulta expõe somente estado seguro, sem URL afiliada, conteúdo ou segredo. O processo respeita SIGTERM/SIGINT e libera o lock. A fila SQLite conserva estados de retry e `PROCESSING` para reconciliação após reinício, sem reenvio automático de entrega incerta.
+
+As units systemd executam worker e web como usuário normal, com diretório do clone, restart somente em falha e web em `127.0.0.1:8000`. O alvo Acer (i3-6100U, 4 GB, HDD, sem GPU) usa `qwen3.5:2b`, `think=false`, contexto 1024, temperatura 0.3 e keep-alive 2m; Qwen 4B fica fora do escopo. Ollama e FFmpeg ausentes degradam somente a geração local, preservando templates, imagens e asset pendente.
 
 O preço riscado de importação manual fica em metadado não verificado. `price_history` registra apenas preços atuais observados; `verified_history_discount` exige duas observações anteriores em timestamps distintos e compara o preço atual com o menor deles. `verified_offer_data` monta uma prova efêmera, recalculada a partir do banco e consumida por Telegram, site e criativos. Claims antigos em rascunhos ainda não publicados são invalidados na migração de inicialização.
 

@@ -57,14 +57,20 @@ class Pipeline:
             raise ValueError("Amazon import bloqueado: aguarda aprovacao escrita e desenho de retencao")
         raise ValueError(f"adapter desconhecido: {name}")
 
-    def ingest_offers(self, offers: list[Offer]) -> list[int]:
+    def ingest_offers(self, offers: list[Offer], *, content_campaign_id: str | None = None) -> list[int]:
         ids: list[int] = []
         for offer in offers:
             offer_data = asdict(offer)
             if merchant_key(offer_data) == "amazon":
                 raise ValueError("Amazon ingest bloqueado: aguarda aprovacao escrita e desenho de retencao")
             validate_offer(offer_data)
-            ids.append(self.db.upsert_offer(offer))
+            # Quando há campanha, o job P1 nasce na mesma transação do upsert.
+            # Assim uma queda após a ingestão nunca perde o trabalho de conteúdo.
+            ids.append(self.db.upsert_offer(
+                offer,
+                content_campaign_id=content_campaign_id,
+                content_dry_run=self.settings.dry_run if content_campaign_id is not None else None,
+            ))
         return ids
 
     def ingest_source(self, path: Path, adapter_name: str | None = None) -> list[int]:
@@ -188,7 +194,7 @@ class Pipeline:
         return {"queue_id": queue["id"], "status": status, "message_id": result.message_id, "dry_run": result.dry_run}
 
     def run_offers(self, offers: list[Offer], campaign_id: str = "organic") -> dict:
-        offer_ids = self.ingest_offers(offers)
+        offer_ids = self.ingest_offers(offers, content_campaign_id=campaign_id)
         queue_ids = self.curate_and_queue(offer_ids, campaign_id)
         publications = []
         while True:

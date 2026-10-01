@@ -16,6 +16,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 
 from app.services.content import brl, verified_discount
+from app.services.llm import heavy_work_slot
 from app.services.site import offer_slug
 
 
@@ -233,7 +234,8 @@ class CreativeGenerator:
             "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-movflags", "+faststart", str(output),
         ))
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
+            with heavy_work_slot():
+                subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)
             return VideoResult("FFMPEG_FAILED", None, detail[:500])

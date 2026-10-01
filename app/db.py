@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS offers (
     stock_status TEXT NOT NULL,
     source_type TEXT NOT NULL,
     tracking_metadata_json TEXT NOT NULL DEFAULT '{}',
+    content_fingerprint TEXT NOT NULL DEFAULT '',
     deal_score REAL,
     score_class TEXT,
     updated_at TEXT NOT NULL,
@@ -202,6 +204,33 @@ CREATE TABLE IF NOT EXISTS operation_events (
     error_type TEXT
 );
 
+CREATE TABLE IF NOT EXISTS worker_runtime (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    status TEXT NOT NULL,
+    pid INTEGER,
+    started_at TEXT,
+    heartbeat_at TEXT NOT NULL,
+    last_tick_at TEXT,
+    last_cycle_at TEXT,
+    last_result TEXT,
+    error_type TEXT
+);
+
+CREATE TABLE IF NOT EXISTS content_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    offer_id INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+    campaign_id TEXT NOT NULL,
+    facts_fingerprint TEXT NOT NULL,
+    dry_run INTEGER NOT NULL CHECK(dry_run IN (0,1)),
+    status TEXT NOT NULL CHECK(status IN ('PENDING','PROCESSING','COMPLETED','FAILED','SUPERSEDED')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    available_at TEXT NOT NULL,
+    error_type TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(offer_id, campaign_id, facts_fingerprint, dry_run)
+);
+
 CREATE INDEX IF NOT EXISTS idx_queue_due ON publish_queue(status, available_at);
 CREATE INDEX IF NOT EXISTS idx_publications_offer_time ON publications(offer_id, published_at);
 CREATE INDEX IF NOT EXISTS idx_clicks_offer ON clicks(offer_id);
@@ -212,6 +241,7 @@ CREATE INDEX IF NOT EXISTS idx_conversions_analytics ON conversions(status,chann
 CREATE INDEX IF NOT EXISTS idx_conversions_click_status ON conversions(click_id,status);
 CREATE INDEX IF NOT EXISTS idx_offers_analytics ON offers(category,merchant);
 CREATE INDEX IF NOT EXISTS idx_impressions_analytics ON impressions(channel,campaign_id,format,creative_id,timestamp);
+CREATE INDEX IF NOT EXISTS idx_content_jobs_due ON content_jobs(status,available_at,id);
 """
 
 
@@ -258,6 +288,9 @@ class Database:
             for name, statement in content_migrations.items():
                 if name not in content_columns:
                     connection.execute(statement)
+            offer_columns = {row["name"] for row in connection.execute("PRAGMA table_info(offers)")}
+            if "content_fingerprint" not in offer_columns:
+                connection.execute("ALTER TABLE offers ADD COLUMN content_fingerprint TEXT NOT NULL DEFAULT ''")
             click_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clicks)")}
             if "format" not in click_columns:
                 connection.execute("ALTER TABLE clicks ADD COLUMN format TEXT NOT NULL DEFAULT 'unknown'")
@@ -305,18 +338,38 @@ class Database:
             connection.commit()
             connection.execute("PRAGMA journal_mode = WAL")
 
-    def upsert_offer(self, offer: Offer) -> int:
+    def upsert_offer(
+        self,
+        offer: Offer,
+        *,
+        content_campaign_id: str | None = None,
+        content_dry_run: bool | None = None,
+    ) -> int:
         now = utc_now()
-        values = {
-            **{field: getattr(offer, field) for field in (
+        offer_values = {field: getattr(offer, field) for field in (
                 "merchant", "affiliate_network", "external_product_id", "title", "description",
                 "category", "brand", "original_price_cents", "current_price_cents", "discount_percent",
                 "coupon", "coupon_expiration", "shipping", "rating", "sales_count", "commission_rate",
                 "commission_estimate_cents", "source_url", "affiliate_url", "deeplink", "collected_at",
                 "expires_at", "stock_status", "source_type"
-            )},
-            "image_urls_json": json.dumps(offer.image_urls, ensure_ascii=False),
-            "tracking_metadata_json": json.dumps(offer.tracking_metadata, ensure_ascii=False),
+            )}
+        image_urls_json = json.dumps(offer.image_urls, ensure_ascii=False)
+        tracking_metadata_json = json.dumps(offer.tracking_metadata, ensure_ascii=False, sort_keys=True)
+        fingerprint_values = {
+            key: value for key, value in offer_values.items() if key != "collected_at"
+        }
+        fingerprint_values.update({
+            "image_urls_json": image_urls_json,
+            "tracking_metadata_json": tracking_metadata_json,
+        })
+        content_fingerprint = hashlib.sha256(
+            json.dumps(fingerprint_values, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        values = {
+            **offer_values,
+            "image_urls_json": image_urls_json,
+            "tracking_metadata_json": tracking_metadata_json,
+            "content_fingerprint": content_fingerprint,
             "updated_at": now,
         }
         columns = ", ".join(values)
@@ -340,6 +393,30 @@ class Database:
                 "INSERT OR IGNORE INTO price_history(offer_id, price_cents, observed_at) VALUES(?,?,?)",
                 (offer_id, offer.current_price_cents, offer.collected_at),
             )
+            if content_campaign_id is not None:
+                campaign_id = content_campaign_id.strip()
+                if not campaign_id:
+                    raise ValueError("campaign_id do job de conteudo e obrigatorio")
+                if content_dry_run is None:
+                    raise ValueError("modo do job de conteudo e obrigatorio")
+                existing = connection.execute(
+                    """SELECT id FROM content_jobs
+                       WHERE offer_id=? AND facts_fingerprint=? AND dry_run=? AND status!='SUPERSEDED'
+                       LIMIT 1""",
+                    (offer_id, content_fingerprint, int(content_dry_run)),
+                ).fetchone()
+                if existing is None:
+                    connection.execute(
+                        """INSERT INTO content_jobs(
+                               offer_id,campaign_id,facts_fingerprint,dry_run,status,
+                               available_at,created_at,updated_at
+                           ) VALUES(?,?,?,?,'PENDING',?,?,?)
+                           ON CONFLICT(offer_id,campaign_id,facts_fingerprint,dry_run) DO UPDATE SET
+                               status='PENDING',attempts=0,available_at=excluded.available_at,
+                               error_type=NULL,updated_at=excluded.updated_at
+                           WHERE content_jobs.status='SUPERSEDED'""",
+                        (offer_id, campaign_id, content_fingerprint, int(content_dry_run), now, now, now),
+                    )
         return offer_id
 
     def get_offer(self, offer_id: int) -> sqlite3.Row | None:
@@ -792,6 +869,139 @@ class Database:
                 "SELECT * FROM operation_events ORDER BY id DESC LIMIT ?",
                 (max(1, min(int(limit), 200)),),
             ).fetchall()
+
+    def record_worker_heartbeat(
+        self,
+        status: str,
+        *,
+        pid: int | None,
+        started_at: str | None = None,
+        last_tick_at: str | None = None,
+        last_cycle_at: str | None = None,
+        last_result: str | None = None,
+        error_type: str | None = None,
+    ) -> None:
+        """Persiste somente metadados operacionais seguros do worker singleton."""
+        if status not in {"STARTING", "RUNNING", "ERROR", "STOPPED"}:
+            raise ValueError("status de worker invalido")
+        if last_result not in {None, "cycle", "queue", "idle", "error", "stopped"}:
+            raise ValueError("resultado de worker invalido")
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT INTO worker_runtime(
+                       id,status,pid,started_at,heartbeat_at,last_tick_at,last_cycle_at,last_result,error_type
+                   ) VALUES(1,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       status=excluded.status,
+                       pid=excluded.pid,
+                       started_at=COALESCE(excluded.started_at,worker_runtime.started_at),
+                       heartbeat_at=excluded.heartbeat_at,
+                       last_tick_at=COALESCE(excluded.last_tick_at,worker_runtime.last_tick_at),
+                       last_cycle_at=COALESCE(excluded.last_cycle_at,worker_runtime.last_cycle_at),
+                       last_result=COALESCE(excluded.last_result,worker_runtime.last_result),
+                       error_type=excluded.error_type""",
+                (
+                    status,
+                    pid,
+                    started_at,
+                    now,
+                    last_tick_at,
+                    last_cycle_at,
+                    last_result,
+                    error_type,
+                ),
+            )
+
+    def worker_runtime(self) -> sqlite3.Row | None:
+        with self.connect() as connection:
+            return connection.execute("SELECT * FROM worker_runtime WHERE id=1").fetchone()
+
+    def recover_content_jobs(self, *, dry_run: bool) -> int:
+        """Reabre jobs idempotentes interrompidos por queda do processo."""
+        now = utc_now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE content_jobs
+                   SET status='PENDING',attempts=MAX(attempts-1,0),available_at=?,
+                       error_type='WorkerInterrupted',updated_at=?
+                   WHERE status='PROCESSING' AND dry_run=?""",
+                (now, now, int(dry_run)),
+            )
+            return int(cursor.rowcount)
+
+    def claim_content_job(self, *, dry_run: bool) -> sqlite3.Row | None:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT j.*,o.content_fingerprint AS current_fingerprint
+                   FROM content_jobs j JOIN offers o ON o.id=j.offer_id
+                   WHERE j.dry_run=? AND j.status IN ('PENDING','FAILED') AND j.available_at<=?
+                   ORDER BY j.id LIMIT 1""",
+                (int(dry_run), now),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                """UPDATE content_jobs
+                   SET status='PROCESSING',attempts=attempts+1,error_type=NULL,updated_at=?
+                   WHERE id=?""",
+                (now, row["id"]),
+            )
+            return connection.execute(
+                """SELECT j.*,o.content_fingerprint AS current_fingerprint
+                   FROM content_jobs j JOIN offers o ON o.id=j.offer_id WHERE j.id=?""",
+                (row["id"],),
+            ).fetchone()
+
+    def supersede_content_job(self, job_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE content_jobs
+                   SET status='SUPERSEDED',error_type=NULL,updated_at=?
+                   WHERE id=? AND status='PROCESSING'""",
+                (utc_now(), job_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("job de conteudo nao esta em processamento")
+
+    def complete_content_job(self, job_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE content_jobs
+                   SET status='COMPLETED',error_type=NULL,updated_at=?
+                   WHERE id=? AND status='PROCESSING'""",
+                (utc_now(), job_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("job de conteudo nao esta em processamento")
+
+    def fail_content_job(self, job_id: int, error_type: str, available_at: str) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE content_jobs
+                   SET status='FAILED',error_type=?,available_at=?,updated_at=?
+                   WHERE id=? AND status='PROCESSING'""",
+                (error_type[:100], available_at, utc_now(), job_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("job de conteudo nao esta em processamento")
+
+    def queue_depth(self, *, dry_run: bool) -> int:
+        """Conta trabalho ainda não concluído do modo atual, inclusive reconciliação."""
+        with self.connect() as connection:
+            publication = connection.execute(
+                """SELECT COUNT(*) AS count FROM publish_queue
+                   WHERE dry_run=? AND status IN ('PENDING','FAILED','PROCESSING')""",
+                (int(dry_run),),
+            ).fetchone()
+            content = connection.execute(
+                """SELECT COUNT(*) AS count FROM content_jobs
+                   WHERE dry_run=? AND status NOT IN ('COMPLETED','SUPERSEDED')""",
+                (int(dry_run),),
+            ).fetchone()
+            return int(publication["count"]) + int(content["count"])
 
     def publication_for_key(self, idempotency_key: str) -> sqlite3.Row | None:
         with self.connect() as connection:

@@ -28,7 +28,13 @@ def run_due(db: Database, pipeline: Pipeline, source: Path, now: datetime) -> di
     if slot_key is None or not db.claim_schedule_slot(slot_key):
         return None
     try:
-        return pipeline.run(source, campaign_id=f"scheduled-{slot}")
+        campaign_id = f"scheduled-{slot}"
+        result = pipeline.run(source, campaign_id=campaign_id)
+        # O worker usa a mesma campanha para gerar ContentPackages e assets
+        # depois da ingestão, preservando idempotência entre os dois estágios.
+        if isinstance(result, dict):
+            result.setdefault("campaign_id", campaign_id)
+        return result
     except Exception:
         db.release_schedule_slot(slot_key)
         raise

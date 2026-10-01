@@ -179,7 +179,7 @@ set LLAMA_MODEL_PATH=C:\caminho\modelo.gguf
 .venv\Scripts\python.exe -m app.cli copy-preview 1 --channel instagram_feed
 ```
 
-Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. O resultado é `REVIEW_ONLY`: o hook sugerido precisa de revisão, e copy, hashtags e roteiro canônicos continuam determinísticos. O comando não grava `ContentPackage`, não enfileira nem publica. Oferta expirada ou canal bloqueado falha antes da IA. O uso local usa [parâmetros oficiais da CLI do llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md) e não baixa modelo. Não há provider remoto operacional nesta versão.
+Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. No P1, apenas o hook genérico validado pode entrar nos pacotes locais de vídeo; fatos, legenda canônica, URLs, score e compliance continuam em Python. Ollama local é preferido quando o modelo responde; llama.cpp local é o segundo provider e template é o fallback. Saída com fatos não verificados, falha ou timeout não interrompe o pipeline. O uso opcional de llama.cpp continua com [parâmetros oficiais da CLI](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md). Nenhum provider usa serviço remoto.
 
 ## Agendamento P0
 
@@ -233,3 +233,36 @@ scripts\test.bat
 ```
 
 O teste FFmpeg é executado quando `ffmpeg` está no PATH ou `imageio-ffmpeg` está instalado; caso contrário, ele é pulado e o fallback `FFMPEG_UNAVAILABLE` continua coberto.
+
+## Execução contínua no notebook Acer com Lubuntu
+
+O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Use `qwen3.5:2b`; Qwen 4B não é suportado nesse hardware. Ollama deve escutar em `127.0.0.1:11434`. A aplicação faz uma inferência por vez, com `think=false`, contexto 1024, temperatura 0.3, timeout de 120 s e keep-alive de 2 minutos. Python continua responsável por todos os dados factuais e pelas regras de distribuição.
+
+Depois de autenticar o GitHub no notebook para acessar o repositório privado:
+
+```bash
+git clone https://github.com/iagoluch/bot-afiliado.git
+cd bot-afiliado
+bash scripts/install.sh
+```
+
+`install.sh` cria `.venv`, instala as dependências Python e cria os diretórios locais. Ele verifica Ollama, o modelo e FFmpeg; ausência de Ollama/FFmpeg produz aviso e mantém os fallbacks seguros. Nenhum modelo é baixado automaticamente. Se o Ollama já estiver instalado, mas faltar o modelo, instale-o manualmente no notebook com `ollama pull qwen3.5:2b` e confira com `ollama list`.
+
+Mantenha `DRY_RUN=true` em `.env`. Com `WORKER_SOURCE_PATH` vazio, o worker usa `examples/shopee_offers.sample.csv` somente em DRY_RUN. Teste e inicie os processos:
+
+```bash
+bash scripts/test.sh
+bash scripts/start.sh worker
+```
+
+Em outro terminal, `bash scripts/start.sh web` abre a interface local em `http://127.0.0.1:8000`. O worker obtém lock local exclusivo, executa slots e drena a fila SQLite, gera pacotes/ativos de cada oferta de forma sequencial, dorme em idle e registra heartbeat. SIGTERM/SIGINT encerram o processo; após reinício, o estado da fila permanece no banco. Envios Telegram reais de resultado incerto continuam em `PROCESSING` e exigem reconciliação manual, sem reenvio cego.
+
+Para instalar worker e web como serviços persistentes do systemd, execute como usuário normal:
+
+```bash
+bash scripts/install-systemd.sh
+bash scripts/status.sh
+.venv/bin/python -m app.cli runtime-status
+```
+
+`runtime-status` também é executado por `scripts/status.sh` e mostra banco, heartbeat, último ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN sem segredos. As units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`. Em host sem systemd, valide os scripts e rode `start.sh` diretamente, sem tentar habilitar units.

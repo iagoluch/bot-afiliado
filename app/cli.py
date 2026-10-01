@@ -16,6 +16,7 @@ from app.services.llm import copy_preview
 from app.services.instagram_graph import InstagramReelPublisher
 from app.services.pipeline import Pipeline
 from app.services.p1 import P1Pipeline
+from app.worker import runtime_status
 
 
 def _record_operation(db: Database, mode: str, adapter: str, event: str, status: str, **counts: int | str | None) -> None:
@@ -78,6 +79,7 @@ def main() -> None:
     amazon.add_argument("keywords")
     amazon.add_argument("--item-count", type=int, default=10)
     sub.add_parser("overview")
+    sub.add_parser("runtime-status", help="Estado seguro do worker e das dependencias locais")
     events = sub.add_parser("events", help="Ultimos eventos operacionais estruturados")
     events.add_argument("--limit", type=int, default=50)
     telegram_processing = sub.add_parser("telegram-processing", help="Lista envios reais que exigem reconciliacao")
@@ -134,6 +136,8 @@ def main() -> None:
                                lambda: run_tick(db, pipeline, args.source, datetime.now()))
     elif args.command == "events":
         result = [dict(row) for row in db.list_operation_events(args.limit)]
+    elif args.command == "runtime-status":
+        result = runtime_status(db, settings)
     elif args.command == "telegram-processing":
         result = [dict(row) for row in db.list_processing_telegram_queue(args.limit)]
     elif args.command == "telegram-reconcile":
