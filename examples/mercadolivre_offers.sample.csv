@@ -1,0 +1,2 @@
+external_product_id,title,description,category,brand,original_price,current_price,coupon,coupon_expiration,shipping,rating,sales_count,commission_rate,image_urls,source_url,affiliate_url,stock_status
+MLB123456,Produto Mercado Livre Exemplo,Registro demonstrativo preenchido com link oficial,Eletronicos,Marca Exemplo,199.90,99.90,CUPOMEXEMPLO,2099-12-31T23:59:59Z,Frete gratis,4.9,5000,10,https://http2.mlstatic.com/example.jpg,https://produto.mercadolivre.com.br/MLB-123456-produto-exemplo-_JM,https://mercadolivre.com/sec/Exemplo?label=canal-publico,IN_STOCK

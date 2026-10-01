@@ -1,0 +1,2 @@
+external_order_id,offer_id,click_id,merchant,network,value,commission,status,channel,campaign,timestamp
+pedido-exemplo-001,1,,Shopee,Shopee Afiliados,"119,90","14,39",APPROVED,telegram,dry-run,2026-09-30T12:00:00+00:00

@@ -1,0 +1,257 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import shutil
+import sqlite3
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
+
+from app.config import Settings
+from app.db import Database
+from app.models import Offer
+from app.services.compliance import ComplianceError
+from app.services.media import CreativeGenerator, _NoRedirect, _approved_image_url, load_approved_product_image
+from app.services.p1 import P1Pipeline
+from app.services.site import offer_slug
+from app.web import create_app
+
+
+def settings_for(tmp_path: Path, *, ffmpeg_path: str | None = None) -> Settings:
+    return Settings(
+        database_path=tmp_path / "test.db",
+        dry_run=True,
+        public_base_url="http://127.0.0.1:8000",
+        telegram_bot_token=None,
+        telegram_chat_id=None,
+        creatives_path=tmp_path / "creatives",
+        ffmpeg_path=ffmpeg_path,
+    )
+
+
+def insert_offer(db: Database, **overrides) -> int:
+    data = {
+        "merchant": "Shopee",
+        "affiliate_network": "Shopee Afiliados",
+        "external_product_id": "p1-sku",
+        "title": "Fone sem fio",
+        "description": "Audio e bateria",
+        "category": "Eletronicos",
+        "original_price_cents": 20000,
+        "current_price_cents": 9000,
+        "discount_percent": 55,
+        "coupon": "CUPOM",
+        "coupon_expiration": "2099-12-31T00:00:00Z",
+        "shipping": "Frete gratis",
+        "rating": 4.9,
+        "sales_count": 10000,
+        "commission_rate": 15,
+        "image_urls": ["https://down-br.img.susercontent.com/product.jpg"],
+        "source_url": "https://shopee.com.br/product/1/p1",
+        "affiliate_url": "https://s.shopee.com.br/p1?sub_id=original",
+        "stock_status": "IN_STOCK",
+    }
+    data.update(overrides)
+    return db.upsert_offer(Offer(**data))
+
+
+def fake_product(_: str) -> Image.Image:
+    return Image.new("RGB", (640, 480), "#38bdf8")
+
+
+def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg.exe"))
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product)
+    pipeline = P1Pipeline(db, settings, generator)
+
+    first = pipeline.generate_offer(offer_id, "campaign-a")
+    second = pipeline.generate_offer(offer_id, "campaign-a")
+
+    assert first["status"] == "GENERATED"
+    assert first["ffmpeg"] == {"instagram_reel": "FFMPEG_UNAVAILABLE", "tiktok": "FFMPEG_UNAVAILABLE"}
+    assert first["destination_url"].endswith(f"/o/fone-sem-fio-{offer_id}")
+    assert len(first["packages"]) == 6
+    queue = [dict(row) for row in db.list_social_queue()]
+    assert len(queue) == 4
+    status_by_format = {row["format"]: row["status"] for row in queue}
+    assert status_by_format == {
+        "feed": "READY_FOR_PUBLISH",
+        "story": "READY_FOR_PUBLISH",
+        "reel": "ASSET_PENDING",
+        "vertical_video": "PENDING_POLICY_REVIEW",
+    }
+    tiktok = next(row for row in queue if row["channel"] == "tiktok")
+    assert "texto promocional" in tiktok["required_action"]
+    payloads = [json.loads(row["payload_json"]) for row in db.rows("SELECT payload_json FROM content_packages ORDER BY id")]
+    assert {payload["format"] for payload in payloads} == {"feed", "story", "reel", "vertical_video", "offer_page", "text"}
+    assert next(payload for payload in payloads if payload["channel"] == "tiktok")["distribution"] == "LOCAL_DRAFT_REQUIRES_POLICY_REVIEW"
+    assert db.rows("SELECT COUNT(*) AS n FROM content_packages")[0]["n"] == 6
+    assert second["packages"] == first["packages"]
+    telegram = next(package for package in first["packages"] if package["channel"] == "telegram")
+    telegram_row = db.rows("SELECT body,payload_json FROM content_packages WHERE id=?", (telegram["content_id"],))[0]
+    assert "/go/" in telegram_row["body"]
+    assert json.loads(telegram_row["payload_json"])["destination_url"].startswith("http://127.0.0.1:8000/go/")
+    assert db.rows("SELECT COUNT(*) AS n FROM publish_queue")[0]["n"] == 0
+    assert db.rows("SELECT COUNT(*) AS n FROM publications")[0]["n"] == 0
+
+    feed_path = settings.creatives_path / next(package for package in first["packages"] if package["format"] == "feed")["assets"][0]
+    with Image.open(feed_path) as image:
+        assert image.size == (1080, 1080)
+    digest_before = hashlib.sha256(feed_path.read_bytes()).hexdigest()
+    pipeline.generate_offer(offer_id, "campaign-a")
+    assert hashlib.sha256(feed_path.read_bytes()).hexdigest() == digest_before
+
+
+def test_offer_hub_search_and_page_require_conscious_click_and_escape_html(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(
+        db,
+        external_product_id="malicious",
+        title='<script>alert("x")</script> Fone',
+        description='<img src=x onerror="alert(1)">',
+        coupon='"><svg onload=alert(2)>',
+        image_urls=["https://evil.example/tracker.png"],
+    )
+    offer = db.get_offer(offer_id)
+    client = TestClient(create_app(settings, db))
+
+    catalog = client.get("/offers", params={"q": "Fone"})
+    assert catalog.status_code == 200
+    assert "&lt;script&gt;" in catalog.text
+    page = client.get(f"/o/{offer_slug(offer)}")
+    assert page.status_code == 200
+    assert '<script>alert("x")</script>' not in page.text
+    assert '<img src=x onerror="alert(1)">' not in page.text
+    assert "&lt;svg onload=alert(2)&gt;" in page.text
+    assert "evil.example" not in page.text
+    assert "Publicidade:" in page.text
+    assert "Ir para a oferta" in page.text
+    assert "http-equiv='refresh'" not in page.text.lower()
+    assert "window.location" not in page.text.lower()
+    assert db.rows("SELECT COUNT(*) AS n FROM clicks")[0]["n"] == 0
+
+    click = client.get(f"/go/{offer_id}?channel=site&campaign_id=hub&creative_id=offer-page", follow_redirects=False)
+    assert click.status_code == 302
+    assert click.headers["location"] == "https://s.shopee.com.br/p1?sub_id=original"
+    assert db.rows("SELECT COUNT(*) AS n FROM clicks")[0]["n"] == 1
+
+
+def test_product_image_loader_accepts_only_approved_https_hosts() -> None:
+    assert _approved_image_url("https://down-br.img.susercontent.com/product.jpg")
+    assert _approved_image_url("https://cdn.shopee.com.br/product.jpg")
+    assert not _approved_image_url("http://down-br.img.susercontent.com/product.jpg")
+    assert not _approved_image_url("https://evil.example/product.jpg")
+    assert not _approved_image_url("https://shopee.com.br.evil.example/product.jpg")
+    assert _NoRedirect().redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1/private") is None
+
+
+def test_p0_content_table_migrates_to_p1_without_losing_rows(tmp_path: Path) -> None:
+    path = tmp_path / "p0.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE content_packages (id INTEGER PRIMARY KEY AUTOINCREMENT, offer_id INTEGER NOT NULL, channel TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)")
+        connection.execute("INSERT INTO content_packages(offer_id,channel,body,created_at) VALUES(1,'telegram','#publi','2026-09-30T00:00:00Z')")
+    db = Database(path)
+    db.init()
+    columns = {row["name"] for row in db.rows("PRAGMA table_info(content_packages)")}
+    assert {"format", "payload_json", "assets_json", "campaign_id", "content_key"} <= columns
+    row = db.rows("SELECT channel,body,format FROM content_packages")[0]
+    assert dict(row) == {"channel": "telegram", "body": "#publi", "format": "text"}
+    assert db.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='social_queue'")
+
+
+def test_product_image_loader_rejects_oversized_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+    image = Image.new("RGB", (6001, 1), "white")
+    buffer = __import__("io").BytesIO()
+    image.save(buffer, format="PNG")
+
+    class Headers:
+        @staticmethod
+        def get_content_type():
+            return "image/png"
+
+        @staticmethod
+        def get(name):
+            return str(len(buffer.getvalue())) if name == "Content-Length" else None
+
+    class Response:
+        headers = Headers()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        @staticmethod
+        def read(limit):
+            return buffer.getvalue()
+
+    class Opener:
+        @staticmethod
+        def open(request, timeout):
+            return Response()
+
+    monkeypatch.setattr("app.services.media.build_opener", lambda *handlers: Opener())
+    assert load_approved_product_image("https://down-br.img.susercontent.com/large.png") is None
+
+
+def test_p1_revalidates_expired_coupon_before_rendering(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing.exe"))
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    with db.connect() as connection:
+        connection.execute("UPDATE offers SET coupon_expiration='2000-01-01T00:00:00Z' WHERE id=?", (offer_id,))
+    generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product)
+    with pytest.raises(ComplianceError, match="cupom expirado"):
+        P1Pipeline(db, settings, generator).generate_offer(offer_id)
+
+
+def test_p1_real_mode_requires_https_public_url_before_rendering(tmp_path: Path) -> None:
+    settings = replace(settings_for(tmp_path), dry_run=False)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=str(tmp_path / "missing.exe"), image_loader=fake_product)
+    with pytest.raises(ComplianceError, match="HTTP inseguro"):
+        P1Pipeline(db, settings, generator).generate_offer(offer_id)
+    assert not settings.creatives_path.exists()
+
+
+def _development_ffmpeg() -> str | None:
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None
+    candidate = imageio_ffmpeg.get_ffmpeg_exe()
+    return candidate if Path(candidate).is_file() else None
+
+
+@pytest.mark.skipif(_development_ffmpeg() is None, reason="FFmpeg nao esta disponivel neste ambiente")
+def test_ffmpeg_renders_real_short_vertical_mp4(tmp_path: Path) -> None:
+    ffmpeg = _development_ffmpeg()
+    settings = settings_for(tmp_path, ffmpeg_path=ffmpeg)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=ffmpeg, image_loader=fake_product)
+
+    result = P1Pipeline(db, settings, generator).generate_offer(offer_id, "ffmpeg-test", duration_scale=0.01)
+
+    assert result["ffmpeg"] == {"instagram_reel": "READY", "tiktok": "READY"}
+    reel = next(package for package in result["packages"] if package["format"] == "reel")
+    mp4 = settings.creatives_path / next(path for path in reel["assets"] if path.endswith(".mp4"))
+    assert mp4.read_bytes()[4:8] == b"ftyp"
+    assert mp4.stat().st_size > 1_000

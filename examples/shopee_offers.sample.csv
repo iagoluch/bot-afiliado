@@ -1,0 +1,2 @@
+external_product_id,title,description,category,brand,original_price,current_price,coupon,coupon_expiration,shipping,rating,sales_count,commission_rate,image_urls,source_url,affiliate_url,stock_status
+123456789,Fone Bluetooth Exemplo,Registro demonstrativo para validar o fluxo local,Eletronicos,Marca Exemplo,"199,90","119,90",OFERTA10,2099-12-31T23:59:59Z,Frete gratis,4.8,3500,12,https://down-br.img.susercontent.com/example.jpg,https://shopee.com.br/product/1/123456789,https://s.shopee.com.br/example?sub_id=demo,IN_STOCK

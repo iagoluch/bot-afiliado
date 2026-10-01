@@ -1,0 +1,41 @@
+{
+  "searchResult": {
+    "items": [
+      {
+        "asin": "B0EXAMPL0BR",
+        "detailPageURL": "https://www.amazon.com.br/dp/B0EXAMPL0BR?tag=exemplo-20&linkCode=osi",
+        "images": {
+          "primary": {
+            "large": {
+              "url": "https://m.media-amazon.com/images/I/example.jpg",
+              "height": 500,
+              "width": 500
+            }
+          }
+        },
+        "itemInfo": {
+          "title": {"displayValue": "Produto Amazon Exemplo"},
+          "features": {"displayValues": ["Característica oficial de exemplo"]},
+          "byLineInfo": {"brand": {"displayValue": "Marca Exemplo"}}
+        },
+        "browseNodeInfo": {
+          "browseNodes": [{"displayName": "Eletrônicos"}]
+        },
+        "offersV2": {
+          "listings": [
+            {
+              "isBuyBoxWinner": true,
+              "availability": {"type": "IN_STOCK"},
+              "merchantInfo": {"name": "Amazon.com.br"},
+              "price": {
+                "money": {"amount": 119.90, "currency": "BRL", "displayAmount": "R$ 119,90"},
+                "savingBasis": {"money": {"amount": 159.90, "currency": "BRL"}, "savingBasisType": "LIST_PRICE"}
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "totalResultCount": 1
+  }
+}
