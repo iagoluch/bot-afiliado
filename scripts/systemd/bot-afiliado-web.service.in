@@ -7,9 +7,8 @@ Wants=network-online.target
 Type=simple
 User=@RUN_USER@
 WorkingDirectory=@REPO_DIR@
-EnvironmentFile=-@REPO_DIR@/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=@REPO_DIR@/.venv/bin/python -m uvicorn app.web:app --host 127.0.0.1 --port 8000
+ExecStart=@REPO_DIR@/.venv/bin/python -m app.web_server
 Restart=on-failure
 RestartSec=10
 

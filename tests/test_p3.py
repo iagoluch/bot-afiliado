@@ -16,6 +16,7 @@ from app.config import Settings
 from app.db import Database
 from app.models import Offer
 from app.services.analytics import DIMENSIONS, analytics_breakdown
+from app.services.llm import TemplateProvider
 from app.services.compliance import ComplianceError, validate_distribution, validate_offer
 from app.services.compliance import allows_tracking_redirect, distribution_review
 from app.services.curation import score_offer
@@ -318,7 +319,9 @@ def test_amazon_content_generation_is_fail_closed(tmp_path: Path) -> None:
     )
     offer_id = db.upsert_offer(amazon)
     generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=lambda _: None)
-    result = P1Pipeline(db, settings, generator).generate_offer(offer_id, "amazon-review")
+    result = P1Pipeline(db, settings, generator, provider=TemplateProvider()).generate_offer(
+        offer_id, "amazon-review",
+    )
     assert result["status"] == "PENDING_MERCHANT_REVIEW"
     assert result["packages"] == []
     assert db.rows("SELECT COUNT(*) n FROM content_packages")[0]["n"] == 0

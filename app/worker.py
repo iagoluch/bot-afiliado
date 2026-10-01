@@ -151,7 +151,7 @@ class WorkerLock:
 
 def _ollama_reachable(settings: Settings) -> bool:
     base_url = str(getattr(settings, "ollama_base_url", os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")))
-    configured_timeout = float(getattr(settings, "ollama_timeout_seconds", 120))
+    configured_timeout = float(getattr(settings, "ollama_timeout_seconds", 300))
     parsed = urlsplit(base_url)
     if (
         parsed.scheme != "http"

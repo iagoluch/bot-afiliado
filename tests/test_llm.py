@@ -144,6 +144,7 @@ def test_cli_preview_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.delenv("LLAMA_CLI_PATH", raising=False)
     monkeypatch.delenv("LLAMA_MODEL_PATH", raising=False)
+    monkeypatch.setattr(OllamaProvider, "health", lambda self: False)
     monkeypatch.setattr(sys, "argv", ["app.cli", "copy-preview", str(offer_id), "--channel", "telegram"])
     main()
     result = json.loads(capsys.readouterr().out)
@@ -188,7 +189,7 @@ def test_ollama_success_uses_local_contract_and_safe_limits(monkeypatch: pytest.
 def test_ollama_health_requires_configured_model(monkeypatch: pytest.MonkeyPatch) -> None:
     def available(request, timeout):
         assert request.full_url.endswith("/api/tags")
-        assert timeout == 1.0
+        assert timeout == 3.0
         return _Response(json.dumps({"models": [{"name": "qwen3.5:2b"}]}).encode())
 
     monkeypatch.setattr("app.services.llm._local_urlopen", available)
@@ -199,6 +200,24 @@ def test_ollama_health_requires_configured_model(monkeypatch: pytest.MonkeyPatch
         lambda request, timeout: _Response(json.dumps({"models": [{"name": "outro:1b"}]}).encode()),
     )
     assert OllamaProvider().health() is False
+
+
+def test_ollama_health_retries_a_slow_transient_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[float] = []
+
+    def recovering_urlopen(request, timeout):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise TimeoutError("ollama reiniciando")
+        return _Response(json.dumps({"models": [{"name": "qwen3.5:2b"}]}).encode())
+
+    monkeypatch.setattr("app.services.llm._local_urlopen", recovering_urlopen)
+    monkeypatch.setattr("app.services.llm.time.sleep", lambda _seconds: None)
+
+    assert OllamaProvider(timeout_seconds=300).health() is True
+    assert calls == [3.0, 3.0]
 
 
 def test_provider_selection_prefers_ollama_then_llama_then_template(
@@ -257,6 +276,30 @@ def test_ollama_timeout_and_output_limit_fall_back(monkeypatch: pytest.MonkeyPat
         "LOCAL_GENERATION_FAILED",
     )
 
+
+def test_local_generation_failure_emits_safe_structured_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    provider = OllamaProvider()
+
+    def timeout(*_args) -> str:
+        raise TimeoutError("mensagem interna que nao deve vazar")
+
+    monkeypatch.setattr(provider, "suggest_hook", timeout)
+
+    assert safe_hook(_offer(), "telegram", provider=provider)[1:] == (
+        "template",
+        "LOCAL_GENERATION_FAILED",
+    )
+    event = json.loads(capsys.readouterr().err)
+    assert event["event"] == "local_generation"
+    assert event["provider"] == "ollama"
+    assert event["status"] == "FAILED"
+    assert event["fallback_reason"] == "LOCAL_GENERATION_FAILED"
+    assert event["error_type"] == "TimeoutError"
+    assert isinstance(event["duration_ms"], int)
+    assert "mensagem interna" not in str(event)
 
 @pytest.mark.parametrize(
     "text",

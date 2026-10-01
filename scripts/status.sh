@@ -9,13 +9,6 @@ if [[ ! -x "$PYTHON" ]]; then
     exit 1
 fi
 
-if [[ -f "$REPO_DIR/.env" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" || "$line" == \#* ]] && continue
-        [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
-    done < "$REPO_DIR/.env"
-fi
-
 cd "$REPO_DIR"
 "$PYTHON" -m app.cli runtime-status
 

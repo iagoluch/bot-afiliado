@@ -12,7 +12,7 @@ set DATABASE_PATH=data\affiliate.db
 set CREATIVES_PATH=data\creatives
 ```
 
-O projeto lê variáveis do ambiente; `.env` é apenas modelo e não é carregado automaticamente.
+O projeto carrega `.env` automaticamente a partir da raiz do repositório, inclusive quando o comando é iniciado em outro diretório. Variáveis já definidas no ambiente têm precedência sobre `.env`, e `.env` tem precedência sobre os padrões da aplicação. O arquivo aceita pares literais `KEY=VALUE`; não é executado como shell.
 
 ## P0: Telegram, tracking e analytics
 
@@ -181,6 +181,8 @@ set LLAMA_MODEL_PATH=C:\caminho\modelo.gguf
 
 Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. No P1, apenas o hook genérico validado pode entrar nos pacotes locais de vídeo; fatos, legenda canônica, URLs, score e compliance continuam em Python. Ollama local é preferido quando o modelo responde; llama.cpp local é o segundo provider e template é o fallback. Saída com fatos não verificados, falha ou timeout não interrompe o pipeline. O uso opcional de llama.cpp continua com [parâmetros oficiais da CLI](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md). Nenhum provider usa serviço remoto.
 
+Cada tentativa local grava no stderr um JSON compacto com `provider`, `status`, `duration_ms`, `fallback_reason` e `error_type`, sem prompt, resposta, URL ou segredo. Se o retorno for `LOCAL_GENERATION_FAILED`, confirme primeiro o timeout efetivo e consulte esse evento e o journal do Ollama. Não aumente o timeout apenas para esconder cold start: no Acer com HDD e 4 GB, um ensaio de 900 s ainda terminou em `TimeoutError` enquanto o runner carregava o modelo. Nessa condição, o resultado correto é `TEMPLATE_FALLBACK`; `REAL_LOCAL_AI` só pode ser declarado depois de uma resposta efetiva do Qwen pelo fluxo do bot.
+
 ## Agendamento P0
 
 Use o Agendador de Tarefas do Windows a cada cinco minutos:
@@ -236,7 +238,7 @@ O teste FFmpeg é executado quando `ffmpeg` está no PATH ou `imageio-ffmpeg` es
 
 ## Execução contínua no notebook Acer com Lubuntu
 
-O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Use `qwen3.5:2b`; Qwen 4B não é suportado nesse hardware. Ollama deve escutar em `127.0.0.1:11434`. A aplicação faz uma inferência por vez, com `think=false`, contexto 1024, temperatura 0.3, timeout de 120 s e keep-alive de 2 minutos. Python continua responsável por todos os dados factuais e pelas regras de distribuição.
+O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Use `qwen3.5:2b`; Qwen 4B não é suportado nesse hardware. Ollama deve escutar em `127.0.0.1:11434`. A aplicação faz uma inferência por vez, com `think=false`, contexto 1024, temperatura 0.3, timeout de 300 s e keep-alive de 2 minutos. Python continua responsável por todos os dados factuais e pelas regras de distribuição.
 
 Depois de autenticar o GitHub no notebook para acessar o repositório privado:
 
@@ -265,4 +267,4 @@ bash scripts/status.sh
 .venv/bin/python -m app.cli runtime-status
 ```
 
-`runtime-status` também é executado por `scripts/status.sh` e mostra banco, heartbeat, último ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN sem segredos. As units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`. Em host sem systemd, valide os scripts e rode `start.sh` diretamente, sem tentar habilitar units.
+`runtime-status` também é executado por `scripts/status.sh` e mostra banco, heartbeat, último ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN sem segredos. Scripts e units delegam a leitura de `.env` ao mesmo parser Python; as units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`. Em host sem systemd, valide os scripts e rode `start.sh` diretamente, sem tentar habilitar units.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import sqlite3
 import sys
@@ -17,6 +18,8 @@ from app.config import Settings
 from app.db import Database
 from app.scheduler import run_tick
 from app.services.llm import TemplateProvider
+from app.services.analytics import analytics_breakdown
+from app.services.conversions import import_conversion_csv
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
 from app.web import create_app
@@ -517,6 +520,14 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
     assert tick_count == 2
     assert db.rows("SELECT status FROM publish_queue")[0]["status"] == "SIMULATED"
     assert db.rows("SELECT status FROM content_jobs")[0]["status"] == "COMPLETED"
+    hook_payload = json.loads(db.rows(
+        "SELECT payload_json FROM content_packages WHERE format='reel' LIMIT 1"
+    )[0]["payload_json"])["editorial_hook"]
+    assert hook_payload == {
+        "text": "Veja este produto em destaque",
+        "source": "template",
+        "fallback_reason": "LOCAL_MODEL_NOT_CONFIGURED_OR_MISSING",
+    }
     packages = db.rows("SELECT assets_json FROM content_packages WHERE assets_json!='[]'")
     assert packages
     relative_assets = [item for row in packages for item in json.loads(row["assets_json"])]
@@ -524,6 +535,45 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
     assert all((settings.creatives_path / item).is_file() for item in relative_assets)
     first_runtime = dict(db.worker_runtime())
     assert first_runtime["last_cycle_at"]
+
+    offer_id = int(db.rows("SELECT id FROM offers LIMIT 1")[0]["id"])
+    client = TestClient(create_app(settings, db))
+    for _ in range(5):
+        response = client.get(
+            f"/go/{offer_id}",
+            params={
+                "channel": "telegram",
+                "campaign_id": "demo-offline",
+                "creative_id": "demo-copy",
+                "format": "text",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+    click_ids = [row["click_id"] for row in db.rows("SELECT click_id FROM clicks ORDER BY timestamp LIMIT 2")]
+    conversions = tmp_path / "conversions.csv"
+    with conversions.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=(
+            "external_order_id", "click_id", "status", "value", "commission",
+        ))
+        writer.writeheader()
+        for index, click_id in enumerate(click_ids, start=1):
+            writer.writerow({
+                "external_order_id": f"demo-{index}",
+                "click_id": click_id,
+                "status": "APPROVED",
+                "value": "100.00",
+                "commission": "10.00",
+            })
+    assert import_conversion_csv(db, conversions) == 2
+    assert import_conversion_csv(db, conversions) == 2
+    metrics = analytics_breakdown(db, "channel")[0]
+    assert metrics["segment"] == "telegram"
+    assert metrics["clicks"] == 5
+    assert metrics["conversions"] == 2
+    assert metrics["commission_cents"] == 2000
+    assert metrics["cvr"] == 40.0
+    assert metrics["epc_cents"] == 400.0
 
     reopened = Database(settings.database_path)
     reopened.init()
@@ -542,4 +592,6 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
 
     assert reopened.rows("SELECT status FROM publish_queue")[0]["status"] == "SIMULATED"
     assert reopened.rows("SELECT status FROM content_jobs")[0]["status"] == "COMPLETED"
+    assert reopened.overview()["clicks"] == 5
+    assert reopened.overview()["conversions"] == 2
     assert reopened.worker_runtime()["heartbeat_at"] >= first_runtime["heartbeat_at"]

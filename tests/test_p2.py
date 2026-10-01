@@ -24,6 +24,7 @@ from app.adapters.mercadolivre_manual import MercadoLivreManualAdapter
 from app.config import Settings
 from app.db import Database
 from app.services.media import CreativeGenerator
+from app.services.llm import TemplateProvider
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
 from app.scheduler import run_due
@@ -241,7 +242,7 @@ def test_p2_dry_run_and_multichannel_package_are_idempotent_without_external_pub
         ffmpeg_path=settings.ffmpeg_path,
         image_loader=lambda _: None,
     )
-    p1 = P1Pipeline(db, settings, generator)
+    p1 = P1Pipeline(db, settings, generator, provider=TemplateProvider())
     first = p1.generate_offer(offer_id, "p2-e2e")
     second = p1.generate_offer(offer_id, "p2-e2e")
     assert len(first["packages"]) == 6

@@ -16,6 +16,7 @@ from app.config import Settings
 from app.db import Database
 from app.models import Offer
 from app.services.compliance import ComplianceError
+from app.services.llm import TemplateProvider
 from app.services.media import CreativeGenerator, _NoRedirect, _approved_image_url, load_approved_product_image
 from app.services.p1 import P1Pipeline
 from app.services.site import offer_slug
@@ -70,7 +71,7 @@ def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -
     db.init()
     offer_id = insert_offer(db)
     generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product)
-    pipeline = P1Pipeline(db, settings, generator)
+    pipeline = P1Pipeline(db, settings, generator, provider=TemplateProvider())
 
     first = pipeline.generate_offer(offer_id, "campaign-a")
     second = pipeline.generate_offer(offer_id, "campaign-a")
@@ -299,7 +300,7 @@ def test_p1_revalidates_expired_coupon_before_rendering(tmp_path: Path) -> None:
         connection.execute("UPDATE offers SET coupon_expiration='2000-01-01T00:00:00Z' WHERE id=?", (offer_id,))
     generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=settings.ffmpeg_path, image_loader=fake_product)
     with pytest.raises(ComplianceError, match="cupom expirado"):
-        P1Pipeline(db, settings, generator).generate_offer(offer_id)
+        P1Pipeline(db, settings, generator, provider=TemplateProvider()).generate_offer(offer_id)
 
 
 def test_p1_real_mode_requires_https_public_url_before_rendering(tmp_path: Path) -> None:
@@ -309,7 +310,7 @@ def test_p1_real_mode_requires_https_public_url_before_rendering(tmp_path: Path)
     offer_id = insert_offer(db)
     generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=str(tmp_path / "missing.exe"), image_loader=fake_product)
     with pytest.raises(ComplianceError, match="HTTP inseguro"):
-        P1Pipeline(db, settings, generator).generate_offer(offer_id)
+        P1Pipeline(db, settings, generator, provider=TemplateProvider()).generate_offer(offer_id)
     assert not settings.creatives_path.exists()
 
 
@@ -334,7 +335,9 @@ def test_ffmpeg_renders_real_short_vertical_mp4(tmp_path: Path) -> None:
     offer_id = insert_offer(db)
     generator = CreativeGenerator(settings.creatives_path, ffmpeg_path=ffmpeg, image_loader=fake_product)
 
-    result = P1Pipeline(db, settings, generator).generate_offer(offer_id, "ffmpeg-test", duration_scale=0.01)
+    result = P1Pipeline(db, settings, generator, provider=TemplateProvider()).generate_offer(
+        offer_id, "ffmpeg-test", duration_scale=0.01,
+    )
 
     assert result["ffmpeg"] == {"instagram_reel": "READY", "tiktok": "READY"}
     reel = next(package for package in result["packages"] if package["format"] == "reel")

@@ -7,7 +7,6 @@ Wants=network-online.target
 Type=simple
 User=@RUN_USER@
 WorkingDirectory=@REPO_DIR@
-EnvironmentFile=-@REPO_DIR@/.env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=@REPO_DIR@/.venv/bin/python -m app.worker
 Restart=on-failure

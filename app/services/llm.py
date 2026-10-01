@@ -4,8 +4,10 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
@@ -77,7 +79,7 @@ class OllamaProvider:
         base_url: str = "http://127.0.0.1:11434",
         model: str = "qwen3.5:2b",
         *,
-        timeout_seconds: int = 120,
+        timeout_seconds: int = 300,
         context_length: int = 1024,
         temperature: float = 0.3,
         keep_alive: str = "2m",
@@ -113,22 +115,28 @@ class OllamaProvider:
     def health(self) -> bool:
         """Return whether Ollama is reachable and the configured model is installed."""
         request = Request(f"{self.base_url}/api/tags", method="GET")
-        try:
-            with _local_urlopen(request, timeout=min(float(self.timeout_seconds), 1.0)) as response:
-                raw = response.read(65_537)
-            if len(raw) > 65_536:
+        probe_timeout = min(float(self.timeout_seconds), 3.0)
+        for attempt in range(2):
+            try:
+                with _local_urlopen(request, timeout=probe_timeout) as response:
+                    raw = response.read(65_537)
+                if len(raw) > 65_536:
+                    return False
+                payload = json.loads(raw.decode("utf-8"))
+                models = payload.get("models") if isinstance(payload, dict) else None
+                if not isinstance(models, list):
+                    return False
+                return any(
+                    isinstance(item, dict)
+                    and (item.get("name") == self.model or item.get("model") == self.model)
+                    for item in models
+                )
+            except (OSError, TimeoutError):
+                if attempt == 0:
+                    time.sleep(0.25)
+            except (UnicodeDecodeError, ValueError):
                 return False
-            payload = json.loads(raw.decode("utf-8"))
-            models = payload.get("models") if isinstance(payload, dict) else None
-            if not isinstance(models, list):
-                return False
-            return any(
-                isinstance(item, dict)
-                and (item.get("name") == self.model or item.get("model") == self.model)
-                for item in models
-            )
-        except (OSError, TimeoutError, UnicodeDecodeError, ValueError):
-            return False
+        return False
 
     def suggest_hook(self, title: str, category: str, channel: str) -> str:
         del title, category  # Untrusted marketplace text must not enter the prompt.
@@ -263,6 +271,25 @@ def _provider_source(provider: LLMProvider) -> str:
     return "local"
 
 
+def _log_generation(
+    provider: LLMProvider,
+    *,
+    started_at: float,
+    status: str,
+    fallback_reason: str | None,
+    error_type: str | None = None,
+) -> None:
+    event = {
+        "event": "local_generation",
+        "provider": _provider_source(provider),
+        "status": status,
+        "duration_ms": round((time.monotonic() - started_at) * 1000),
+        "fallback_reason": fallback_reason,
+        "error_type": error_type,
+    }
+    print(json.dumps(event, ensure_ascii=True, separators=(",", ":")), file=sys.stderr)
+
+
 def provider_from_env(settings: Settings | None = None) -> LLMProvider:
     settings = settings or Settings.from_env()
     try:
@@ -300,17 +327,31 @@ def safe_hook(
             "template",
             "LOCAL_MODEL_NOT_CONFIGURED_OR_MISSING",
         )
+    started_at = time.monotonic()
     try:
         hook = validated_hook(
             selected.suggest_hook(
                 str(offer.get("title") or ""), str(offer.get("category") or ""), channel
             )
         )
-    except Exception:
+    except Exception as exc:
         hook = None
         fallback_reason = "LOCAL_GENERATION_FAILED"
+        _log_generation(
+            selected,
+            started_at=started_at,
+            status="FAILED",
+            fallback_reason=fallback_reason,
+            error_type=type(exc).__name__,
+        )
     else:
         fallback_reason = None if hook is not None else "SUGGESTION_REJECTED"
+        _log_generation(
+            selected,
+            started_at=started_at,
+            status="ACCEPTED" if hook is not None else "REJECTED",
+            fallback_reason=fallback_reason,
+        )
     if hook is not None:
         return hook, _provider_source(selected), None
     return (

@@ -2,8 +2,38 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ENV_FILE = PROJECT_ROOT / ".env"
+_ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def load_project_env(env_file: Path | str = PROJECT_ENV_FILE) -> dict[str, str]:
+    """Load literal KEY=VALUE pairs without executing shell syntax.
+
+    Existing process variables win over the project file. The returned mapping
+    contains only values added to ``os.environ`` by this call.
+    """
+    path = Path(env_file)
+    if not path.is_file():
+        return {}
+
+    loaded: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        if not separator or not _ENV_KEY.fullmatch(key):
+            continue
+        if key not in os.environ:
+            os.environ[key] = value
+            loaded[key] = value
+    return loaded
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -73,6 +103,7 @@ class Settings:
     awin_allowed_image_hosts: tuple[str, ...] = ()
     admin_password: str | None = None
     web_bind_host: str = "127.0.0.1"
+    web_bind_port: int = 8000
     channel_visibility: dict[str, str] | None = None
     merchant_channel_rules: dict[str, dict] | None = None
     instagram_access_token: str | None = None
@@ -84,14 +115,15 @@ class Settings:
     instagram_facebook_login_ready: bool = False
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3.5:2b"
-    ollama_timeout_seconds: int = 120
+    ollama_timeout_seconds: int = 300
     ollama_context_length: int = 1024
     ollama_temperature: float = 0.3
     ollama_keep_alive: str = "2m"
     ollama_think: bool = False
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
+        load_project_env(env_file)
         settings = cls(
             database_path=Path(os.getenv("DATABASE_PATH", "data/affiliate.db")),
             dry_run=_bool_env("DRY_RUN", True),
@@ -115,6 +147,7 @@ class Settings:
             ),
             admin_password=os.getenv("ADMIN_PASSWORD") or None,
             web_bind_host=os.getenv("WEB_HOST", "127.0.0.1").strip() or "127.0.0.1",
+            web_bind_port=_int_env("WEB_PORT", 8000),
             channel_visibility={
                 "site": "public",
                 "telegram": "public",
@@ -140,7 +173,7 @@ class Settings:
             instagram_facebook_login_ready=_bool_env("INSTAGRAM_FACEBOOK_LOGIN_READY", False),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
             ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:2b").strip(),
-            ollama_timeout_seconds=_int_env("OLLAMA_TIMEOUT_SECONDS", 120),
+            ollama_timeout_seconds=_int_env("OLLAMA_TIMEOUT_SECONDS", 300),
             ollama_context_length=_int_env("OLLAMA_CONTEXT_LENGTH", 1024),
             ollama_temperature=_float_env("OLLAMA_TEMPERATURE", 0.3, minimum=0.0, maximum=2.0),
             ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "2m").strip(),
@@ -152,4 +185,6 @@ class Settings:
             raise ValueError("OLLAMA_MODEL nao pode ser vazio")
         if not settings.ollama_keep_alive:
             raise ValueError("OLLAMA_KEEP_ALIVE nao pode ser vazio")
+        if settings.web_bind_port > 65535:
+            raise ValueError("WEB_PORT deve ser menor ou igual a 65535")
         return settings

@@ -8,10 +8,14 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 
 ## Runtime Lubuntu 24/7
 
+- Homologação no Acer em 01/10/2026 confirmou a causa da configuração divergente: `Settings.from_env()` lia somente `os.environ`, enquanto apenas `start.sh` e systemd interpretavam `.env`. O carregamento agora é único em Python, ancorado na raiz, com precedência `ambiente > .env > padrão`; CLI, worker, web, scripts e units recebem a mesma configuração. O timeout efetivo do processo foi confirmado em 300 s.
+- `REAL_LOCAL_AI` ainda não foi comprovado neste Acer. Com o Qwen descarregado, `copy-preview` expirou em 300 s e voltou corretamente ao template; o Ollama cancelou a requisição com HTTP 499 enquanto o runner ainda carregava o modelo. O host estava configurado com contexto global 2048, divergente do projeto; após corrigir para 1024 e limitar um modelo carregado, um ensaio diagnóstico com timeout de processo de 900 s também falhou após 927,35 s. O evento seguro registrou `TimeoutError` em 911.230 ms e o Ollama encerrou o load com HTTP 499 após cerca de 15 minutos, ainda em `llm server loading model`, com forte uso de HDD/swap. Não houve resposta válida do Qwen nem estado warm nessa rodada; o padrão permaneceu em 300 s.
+- Após um load cancelado, `/api/tags` também apresentou latência acima de 1 s e erro 500 transitório. A sonda local agora permite até 3 s e uma única repetição para erro de transporte/timeout; modelo ausente ou payload inválido continuam falhando imediatamente. Cada inferência local registra somente provider, estado, duração, motivo de fallback e classe de erro em JSON no stderr, sem prompt, resposta, URL ou segredo.
 - `OllamaProvider` local usa `qwen3.5:2b`, `think=false`, contexto 1024, temperatura 0.3 e keep-alive 2m; resposta fora da linguagem genérica permitida ou falha volta ao template. O P1 grava o hook seguro no ContentPackage de vídeo; fatos, captions, score e compliance permanecem em Python. Um lock compartilhado serializa Ollama e FFmpeg entre processos no Linux.
 - `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT estão implementados. Jobs P1 nascem com o upsert, são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
 - `runtime-status` e `/health?details=true` mostram apenas banco, worker/heartbeat/ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN. `scripts/*.sh` e templates systemd usam caminhos do clone e usuário normal. A web permanece em `127.0.0.1:8000`.
-- Validação neste host Windows: suíte completa com **157 testes aprovados** em 01/10/2026; E2E offline cobriu sample, ingestão, curadoria, fila `SIMULATED`, ContentPackage, assets locais, idle, heartbeat e restart. `bash -n` passou nos cinco scripts Linux. As units foram revisadas estaticamente; systemd e Ollama/Qwen reais no Acer ainda não foram executados neste host.
+- Validação no Acer: suíte completa com **164 testes aprovados** em 01/10/2026, executada em 35,17 s sem depender de Ollama, marketplace, credencial ou publicação externa. FFmpeg 8.0.1 foi instalado neste host; o teste de MP4 que antes era pulado passou em 8,43 s. O E2E offline cobre sample, ingestão, curadoria, fila `SIMULATED`, fallback `TEMPLATE_FALLBACK`, ContentPackage, assets locais, tracking `/go`, cinco cliques locais, importação idempotente de duas conversões, analytics, idle, heartbeat e persistência após restart. Nenhum redirect externo é seguido no teste.
+- Smoke operacional descartável: worker real em `DRY_RUN` por três minutos, com banco e criativos em `/tmp`, Ollama e FFmpeg indisponíveis por configuração do ensaio; 1 oferta, fila `SIMULATED`, job `COMPLETED`, 7 pacotes e heartbeat, seguido de encerramento `STOPPED` por SIGTERM. Web real em loopback temporário respondeu 200 em `/health?details=true` e `/offers` e encerrou limpo. Nenhum destino externo recebeu chamada.
 
 | COMPONENT | STATUS | TESTED | EXTERNAL DEPENDENCY | NEXT ACTION |
 |---|---|---|---|---|
@@ -25,7 +29,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | Site/hub `/offers` e `/o/{slug}` | COMPLETE | Pesquisa, 404, escape XSS e clique consciente | Domínio HTTPS aprovado | Publicar o domínio após aprovação |
 | ContentPackage multicanal | COMPLETE | 6 formatos idempotentes por oferta, incluindo Telegram | Dados reais válidos | Revisão editorial inicial |
 | Imagens Feed/Story | COMPLETE | PNG real 1080×1080 e 1080×1920, determinismo | Imagem oficial é opcional | Validar identidade visual própria |
-| Reels generator | COMPLETE_WITH_OPTIONAL_BINARY | MP4 H.264 real, 1080×1920, 30 fps, 18 s e sem áudio | FFmpeg via `FFMPEG_PATH`; aceitação do arquivo silencioso ainda não testada na Meta | Instalar FFmpeg e validar container controlado |
+| Reels generator | COMPLETE_WITH_OPTIONAL_BINARY | MP4 H.264 real, 1080×1920, 30 fps, 18 s e sem áudio; teste curto com FFmpeg passou no Acer | Aceitação do arquivo silencioso ainda não testada na Meta | Validar container controlado após aprovações |
 | TikTok generator | PENDING_POLICY_REVIEW | MP4 rascunho real, 1080×1920, 15,03 s | Uso aprovado, OAuth e auditoria | Revisar política antes de qualquer API |
 | Instagram queue | READY_FOR_PUBLISH_LOCAL | Feed, Story e Reel persistidos; somente Reel elegível para container Graph | Revisão, conta profissional, Page e OAuth | Validar container controlado; publicação permanece manual |
 | Instagram Reel Graph | CONTAINER_READY_MEDIA_PUBLISH_BLOCKED | 9 testes: contrato HTTP/CLI, DRY_RUN, gates, estados, segredo, asset vinculado e bloqueio sem rede | Conta/Page/permissão, host HTTPS, token e versão ativa; API de rótulo não confirmada | Criar/consultar container controlado; publicar manualmente com rótulo |
@@ -39,7 +43,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | Feedback determinístico | COMPLETE_LOCAL | Produto/loja/categoria/canal/hora, CTR/CVR/EPC/receita com volume mínimo, smoothing e limite; 1 evento não altera prioridade | Histórico real suficiente | Reavaliar pesos com operação real |
 | Logs estruturados | COMPLETE_LOCAL | SQLite limitado, CLI `events`, ciclo DRY_RUN e falha de log sem repetição | Nenhuma | Consultar eventos na operação |
 | Compliance configurável | COMPLETE_LOCAL | Regras merchant/canal, freshness, Amazon/ML/Admitad fail closed | Termos e canais aprovados | Revisar overrides antes da exposição |
-| IA local auxiliar | COMPLETE_OPTIONAL_PREVIEW | Fallback sem modelo, argv offline mockado, timeout, bloqueio de alegações e CLI somente leitura | Binário e GGUF locais apenas para sugestão por IA | Revisão editorial; testar modelo real se instalado |
+| IA local auxiliar | TEMPLATE_FALLBACK_VALIDATED_REAL_LOCAL_AI_BLOCKED | Mocks offline, timeout, bloqueio de alegações, CLI somente leitura e cold real pelo bot; Qwen não concluiu load em 900 s | Limite de RAM/HDD/swap do Acer durante load do `qwen3.5:2b` | Manter fallback; só declarar IA real após o Qwen responder pelo bot |
 
 ## Dependências externas pendentes
 
@@ -50,7 +54,6 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - Host HTTPS público que exponha o MP4 em caminho derivado de `CREATIVES_PATH`; processamento real do arquivo silencioso ainda não foi testado.
 - Contrato oficial para aplicar o rótulo de parceria paga via API; enquanto ausente, `media_publish` permanece bloqueado e a postagem é manual.
 - App TikTok, `video.publish`, autorização do criador, auditoria e validação explícita do caso de uso promocional.
-- FFmpeg instalado/configurado no host operacional para produzir MP4; imagens e storyboards funcionam sem ele.
 - Aprovação escrita Amazon e desenho de retenção/uso compatível com Product Advertising Content; credenciais isoladamente não liberam busca.
 - Feed Awin de programa aprovado; chave de feed e token da Partner API continuam separados.
 - Link Mercado Livre gerado pelo portal/barra oficial e canal público permitido.
