@@ -808,6 +808,29 @@ def test_conversion_reimport_preserves_original_attribution(tmp_path: Path) -> N
     assert before["commission_cents"] == 1200
     assert before["status"] == "APPROVED"
 
+    db.import_conversion({
+        **updated,
+        "offer_id": None,
+        "click_id": None,
+        "channel": None,
+        "campaign": None,
+        "value_cents": 13000,
+        "commission_cents": 1300,
+        "status": "PAID",
+        "timestamp": "2026-10-02T03:00:00+00:00",
+    })
+    sparse = dict(db.rows(
+        "SELECT * FROM conversions WHERE network=? AND external_order_id=?",
+        ("Rede", "pedido-1"),
+    )[0])
+    assert sparse["offer_id"] == first_offer_id
+    assert sparse["click_id"] == first_click
+    assert sparse["channel"] == "telegram"
+    assert sparse["campaign"] == "campanha-a"
+    assert sparse["value_cents"] == 13000
+    assert sparse["commission_cents"] == 1300
+    assert sparse["status"] == "PAID"
+
     with pytest.raises(ValueError, match="atribuicao da conversao difere da importacao original"):
         db.import_conversion({
             **updated,
@@ -824,5 +847,5 @@ def test_conversion_reimport_preserves_original_attribution(tmp_path: Path) -> N
         "SELECT * FROM conversions WHERE network=? AND external_order_id=?",
         ("Rede", "pedido-1"),
     )[0])
-    assert after == before
+    assert after == sparse
 
