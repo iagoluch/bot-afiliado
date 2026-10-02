@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+import app.adapters.local_files as local_files
 import app.services.conversions as conversions_service
 from fastapi.testclient import TestClient
 
@@ -115,6 +116,30 @@ def insert_second_offer(db: Database) -> int:
         affiliate_url="https://s.shopee.com.br/y?sub_id=original",
         stock_status="IN_STOCK",
     ))
+
+
+def test_manual_feed_reader_bounds_shopee_csv_and_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_path = write_offer_csv(tmp_path / "offers.csv")
+    monkeypatch.setattr(local_files, "MAX_LOCAL_FEED_BYTES", 10)
+    with pytest.raises(ValueError, match="arquivo Shopee excede limite"):
+        ShopeeManualAdapter().import_offers(csv_path)
+
+    monkeypatch.setattr(local_files, "MAX_LOCAL_FEED_BYTES", 50 * 1024 * 1024)
+    monkeypatch.setattr(local_files, "MAX_LOCAL_FEED_ROWS", 1)
+    duplicated = tmp_path / "two.csv"
+    duplicated.write_text(
+        csv_path.read_text(encoding="utf-8") + csv_path.read_text(encoding="utf-8").splitlines()[-1] + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="excede limite de 1 linhas"):
+        ShopeeManualAdapter().import_offers(duplicated)
+
+    malformed = tmp_path / "offers.json"
+    malformed.write_text('{"offers":"not-a-list"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="lista de ofertas"):
+        ShopeeManualAdapter().import_offers(malformed)
 
 
 def test_shopee_adapter_declares_truthful_capabilities_and_normalizes(tmp_path: Path) -> None:
