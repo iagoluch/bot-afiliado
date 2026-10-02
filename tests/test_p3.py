@@ -149,6 +149,11 @@ def test_admin_basic_auth_public_routes_and_secret_redaction(tmp_path: Path) -> 
     assert TestClient(app, base_url="http://afiliados.example").get("/", headers=auth(secret)).status_code == 426
 
     assert client.get("/health").status_code == 200
+    assert client.get("/health?details=true").status_code == 401
+    assert client.get("/health?details=true", headers=auth(secret)).status_code == 200
+    assert TestClient(app, base_url="http://afiliados.example").get(
+        "/health?details=true", headers=auth(secret),
+    ).status_code == 426
     assert client.get("/offers").status_code == 200
     assert client.get("/").status_code == 401
     assert client.get("/api/overview").status_code == 401
