@@ -1139,12 +1139,14 @@ class Database:
                 normalized[field] = click[click_field]
 
         existing = connection.execute(
-            """SELECT offer_id,click_id,channel,campaign
+            """SELECT merchant,offer_id,click_id,channel,campaign
                FROM conversions
                WHERE network=? AND external_order_id=?""",
             (normalized.get("network"), normalized["external_order_id"]),
         ).fetchone()
         if existing is not None:
+            if normalized["merchant"] != existing["merchant"]:
+                raise ValueError("merchant da conversao difere da importacao original")
             for field in ("offer_id", "click_id", "channel", "campaign"):
                 incoming = normalized.get(field)
                 if incoming not in (None, "") and incoming != existing[field]:
