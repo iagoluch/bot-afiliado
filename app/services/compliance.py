@@ -88,20 +88,71 @@ def is_offer_stale(offer: dict, *, now: datetime | None = None) -> bool:
 
 def validate_offer(offer: dict) -> None:
     errors: list[str] = []
+
+    for field in ("merchant", "affiliate_network", "external_product_id", "title"):
+        if not str(offer.get(field) or "").strip():
+            errors.append(f"{field} ausente")
+
     for field in ("source_url", "affiliate_url"):
-        parsed = urlsplit(str(offer.get(field, "")))
-        if parsed.scheme != "https" or not parsed.hostname:
+        value = str(offer.get(field, "")).strip()
+        try:
+            parsed = urlsplit(value)
+            valid = (
+                parsed.scheme == "https"
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+                and not any(char.isspace() or ord(char) < 32 for char in value)
+            )
+        except ValueError:
+            valid = False
+        if not valid:
             errors.append(f"{field} precisa ser URL HTTPS")
-    if not offer.get("title"):
-        errors.append("titulo ausente")
-    if int(offer.get("current_price_cents") or 0) <= 0:
+
+    try:
+        current = int(offer.get("current_price_cents") or 0)
+    except (TypeError, ValueError):
+        current = 0
+    if current <= 0:
         errors.append("preco atual precisa ser positivo")
+
     original = offer.get("original_price_cents")
-    current = offer.get("current_price_cents")
-    if original is not None and original < current:
-        errors.append("preco anterior menor que preco atual")
-    if offer.get("stock_status") == "OUT_OF_STOCK":
+    if original is not None:
+        try:
+            original_value = int(original)
+        except (TypeError, ValueError):
+            errors.append("preco anterior invalido")
+        else:
+            if original_value <= 0:
+                errors.append("preco anterior precisa ser positivo")
+            elif current > 0 and original_value < current:
+                errors.append("preco anterior menor que preco atual")
+
+    stock_status = str(offer.get("stock_status") or "UNKNOWN").strip().upper()
+    if stock_status not in {"IN_STOCK", "OUT_OF_STOCK", "UNKNOWN"}:
+        errors.append("status de estoque invalido")
+    elif stock_status == "OUT_OF_STOCK":
         errors.append("produto indisponivel")
+
+    numeric_ranges = (
+        ("rating", 0.0, 5.0, "rating"),
+        ("sales_count", 0.0, None, "sales_count"),
+        ("commission_rate", 0.0, 100.0, "commission_rate"),
+        ("commission_estimate_cents", 0.0, None, "commission_estimate_cents"),
+        ("discount_percent", 0.0, 100.0, "discount_percent"),
+    )
+    for field, minimum, maximum, label in numeric_ranges:
+        value = offer.get(field)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            errors.append(f"{label} invalido")
+            continue
+        if number < minimum or (maximum is not None and number > maximum):
+            errors.append(f"{label} fora do intervalo permitido")
+
     expiration = offer.get("coupon_expiration")
     if offer.get("coupon") and expiration:
         try:
@@ -116,7 +167,6 @@ def validate_offer(offer: dict) -> None:
         errors.append("oferta expirada; atualize preco, estoque e condicoes")
     if errors:
         raise ComplianceError("; ".join(errors))
-
 
 def validate_content(
     body: str,
