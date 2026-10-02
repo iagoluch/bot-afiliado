@@ -170,10 +170,16 @@ def runtime_status(
         "last_cycle": None,
         "last_result": None,
     }
+    queue_depths: dict[str, int | None] = {
+        "publish_queue_depth": None,
+        "social_queue_depth": None,
+        "content_job_depth": None,
+    }
     queue_depth: int | None = None
     try:
         row = db.worker_runtime()
-        queue_depth = db.queue_depth(dry_run=settings.dry_run)
+        queue_depths = db.queue_depths(dry_run=settings.dry_run)
+        queue_depth = sum(queue_depths.values())
         if row is not None:
             status = str(row["status"]).lower()
             heartbeat = row["heartbeat_at"]
@@ -211,6 +217,7 @@ def runtime_status(
         "database": database_status,
         "worker": worker,
         "queue_depth": queue_depth,
+        **queue_depths,
         "ai": {
             "remote_provider": settings.ai_remote_provider if remote_configured else None,
             "remote_model": settings.cloudflare_ai_model if remote_configured else None,
