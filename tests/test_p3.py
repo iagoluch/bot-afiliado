@@ -179,6 +179,56 @@ def test_segmented_analytics_use_real_impressions_and_approved_conversions(tmp_p
         assert analytics_breakdown(db, dimension), dimension
 
 
+def test_cvr_and_epc_ignore_unattributed_conversions_but_keep_financial_totals(tmp_path: Path) -> None:
+    db = Database(tmp_path / "attributed-metrics.db")
+    db.init()
+    offer_id = db.upsert_offer(offer(product_id="attributed-metrics"))
+    row = db.get_offer(offer_id)
+    assert row is not None
+
+    click_id = db.record_click(
+        row,
+        channel="telegram",
+        campaign_id="p3",
+        creative_id="creative-1",
+        format="text",
+        referrer=None,
+        utm_source=None,
+        utm_medium=None,
+        utm_campaign=None,
+        sub_id=None,
+    )
+    add_conversion(db, order="attributed-order", offer_id=offer_id, click_id=click_id, commission=500)
+    db.import_conversion({
+        "external_order_id": "unattributed-order",
+        "offer_id": offer_id,
+        "click_id": None,
+        "merchant": "Shopee",
+        "network": "Shopee Afiliados",
+        "value_cents": 50000,
+        "commission_cents": 5000,
+        "status": "APPROVED",
+        "channel": "telegram",
+        "campaign": "p3",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
+
+    channel = next(row for row in analytics_breakdown(db, "channel") if row["segment"] == "telegram")
+    assert channel["clicks"] == 1
+    assert channel["conversions"] == 2
+    assert channel["attributed_conversions"] == 1
+    assert channel["commission_cents"] == 5500
+    assert channel["attributed_commission_cents"] == 500
+    assert channel["cvr"] == 100.0
+    assert channel["epc_cents"] == 500.0
+
+    overview = db.overview()
+    assert overview["conversions"] == 2
+    assert overview["commission_cents"] == 5500
+    assert overview["cvr"] == 100.0
+    assert overview["epc_cents"] == 500.0
+
+
 def test_feedback_requires_volume_and_changes_priority_from_real_history(tmp_path: Path) -> None:
     db = Database(tmp_path / "feedback.db")
     db.init()
