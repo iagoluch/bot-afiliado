@@ -111,6 +111,22 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
     app.mount("/media", StaticFiles(directory=settings.creatives_path, check_dir=False), name="media")
 
     @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'; form-action 'self'"
+        )
+        if not request.url.path.startswith("/media/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.middleware("http")
     async def protect_admin(request: Request, call_next):
         path = request.url.path
         protected = path == "/" or any(path == prefix or path.startswith(prefix + "/") for prefix in ADMIN_PREFIXES)
