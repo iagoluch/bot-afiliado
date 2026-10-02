@@ -1097,10 +1097,12 @@ class Database:
             ).fetchone()
             if existing is not None:
                 for field in ("offer_id", "click_id", "channel", "campaign"):
-                    if normalized.get(field) != existing[field]:
+                    incoming = normalized.get(field)
+                    if incoming not in (None, "") and incoming != existing[field]:
                         raise ValueError(
                             f"atribuicao da conversao difere da importacao original: {field}"
                         )
+                    normalized[field] = existing[field]
 
             connection.execute(
                 "INSERT INTO conversions(external_order_id,offer_id,click_id,merchant,network,value_cents,commission_cents,status,channel,campaign,timestamp) VALUES(:external_order_id,:offer_id,:click_id,:merchant,:network,:value_cents,:commission_cents,:status,:channel,:campaign,:timestamp) ON CONFLICT(network,external_order_id) DO UPDATE SET value_cents=excluded.value_cents,commission_cents=excluded.commission_cents,status=excluded.status,timestamp=excluded.timestamp",
