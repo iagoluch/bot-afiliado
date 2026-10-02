@@ -740,6 +740,7 @@ def test_invalid_dry_run_value_fails_closed(monkeypatch: pytest.MonkeyPatch) -> 
     with pytest.raises(ValueError, match="DRY_RUN deve ser true ou false"):
         Settings.from_env()
     monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://offers.example")
     assert Settings.from_env().dry_run is False
 
 
