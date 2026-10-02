@@ -186,6 +186,9 @@ def test_offer_timestamps_are_canonicalized_before_price_history(db: Database) -
         source_url="https://shopee.com.br/product/1/timestamped",
         affiliate_url="https://s.shopee.com.br/timestamped",
         collected_at="2026-10-02T08:00:00-03:00",
+        expires_at="2026-10-03T08:00:00-03:00",
+        coupon="CUPOM",
+        coupon_expiration="2026-10-04T08:00:00-03:00",
         stock_status="IN_STOCK",
     )
     offer_id = Pipeline(
@@ -197,6 +200,8 @@ def test_offer_timestamps_are_canonicalized_before_price_history(db: Database) -
     history = db.rows("SELECT observed_at FROM price_history WHERE offer_id=?", (offer_id,))
     assert stored is not None
     assert stored["collected_at"] == "2026-10-02T11:00:00+00:00"
+    assert stored["expires_at"] == "2026-10-03T11:00:00+00:00"
+    assert stored["coupon_expiration"] == "2026-10-04T11:00:00+00:00"
     assert history[0]["observed_at"] == "2026-10-02T11:00:00+00:00"
 
     with pytest.raises(ComplianceError, match="timezone"):
@@ -211,6 +216,32 @@ def test_offer_timestamps_are_canonicalized_before_price_history(db: Database) -
             "stock_status": "IN_STOCK",
             "collected_at": "2026-10-02T08:00:00",
         })
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("expires_at", "2099-12-31T23:59:59"),
+        ("coupon_expiration", "2099-12-31T23:59:59"),
+    ),
+)
+def test_offer_expiry_fields_require_timezone(field: str, value: str) -> None:
+    offer = {
+        "merchant": "Shopee",
+        "affiliate_network": "Shopee Afiliados",
+        "external_product_id": "naive-expiration",
+        "title": "Produto",
+        "source_url": "https://shopee.com.br/product/1/naive-expiration",
+        "affiliate_url": "https://s.shopee.com.br/naive-expiration",
+        "current_price_cents": 10000,
+        "stock_status": "IN_STOCK",
+        field: value,
+    }
+    if field == "coupon_expiration":
+        offer["coupon"] = "CUPOM"
+
+    with pytest.raises(ComplianceError, match="timezone"):
+        validate_offer(offer)
 
 
 def test_score_is_deterministic_and_ignores_unverified_discount(db: Database) -> None:
