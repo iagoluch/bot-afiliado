@@ -259,7 +259,6 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
         ({"discount_percent": -1}, "discount_percent"),
         ({"merchant": ""}, "merchant ausente"),
         ({"affiliate_network": ""}, "affiliate_network ausente"),
-        ({"external_product_id": ""}, "external_product_id ausente"),
     ),
 )
 def test_offer_domain_rejects_invalid_canonical_values(changes: dict, message: str) -> None:
@@ -276,6 +275,22 @@ def test_offer_domain_rejects_invalid_canonical_values(changes: dict, message: s
 
     with pytest.raises(ComplianceError, match=message):
         validate_offer({**offer, **changes})
+
+
+def test_offer_persistence_rejects_empty_external_identity(db: Database) -> None:
+    offer = Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="",
+        title="Produto",
+        current_price_cents=10000,
+        source_url="https://shopee.com.br/product/1/identity",
+        affiliate_url="https://s.shopee.com.br/identity",
+        stock_status="IN_STOCK",
+    )
+    with pytest.raises(ValueError, match="external_product_id"):
+        db.upsert_offer(offer)
+    assert db.rows("SELECT id FROM offers") == []
 
 
 def test_compliance_blocks_out_of_stock() -> None:
