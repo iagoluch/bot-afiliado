@@ -477,7 +477,7 @@ class CreativeGenerator:
                 zoom = 1.0 + (0.035 * progress)
                 full = _card(
                     (1080, 1920),
-                    title=title,
+                    title="" if role == "hook" else title,
                     primary=primary,
                     secondary=secondary,
                     product=product,
@@ -490,7 +490,7 @@ class CreativeGenerator:
                     continue
                 base = _card(
                     (1080, 1920),
-                    title=title,
+                    title="" if role == "hook" else title,
                     primary="",
                     secondary="",
                     product=product,
@@ -619,7 +619,7 @@ class CreativeGenerator:
                 secondary = self._scene_secondary(role)
                 image = _card(
                     (1080, 1920),
-                    title=title,
+                    title="" if role == "hook" else title,
                     primary=str(scene["text"]),
                     secondary=secondary,
                     product=product,
