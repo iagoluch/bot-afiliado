@@ -163,7 +163,7 @@ set MERCHANT_CHANNEL_RULES_JSON={}
 set AWIN_ALLOWED_IMAGE_HOSTS=cdn-do-anunciante-aprovado.example
 ```
 
-## Preview editorial opcional com IA local
+## Preview editorial opcional com IA
 
 Após importar uma oferta, consulte o ID com `overview` ou no painel e execute:
 
@@ -171,17 +171,25 @@ Após importar uma oferta, consulte o ID com `overview` ou no painel e execute:
 .venv\Scripts\python.exe -m app.cli copy-preview 1 --channel instagram_feed
 ```
 
-Sem modelo, o comando retorna `source=template`. Para usar llama.cpp com arquivos já instalados localmente:
+Sem chave ou modelo local homologado, o comando retorna `source=template`. O provider remoto padrão é Gemini; configure apenas a chave no ambiente ou `.env`:
 
 ```bat
-set LLAMA_CLI_PATH=C:\caminho\llama-cli.exe
-set LLAMA_MODEL_PATH=C:\caminho\modelo.gguf
+set GEMINI_API_KEY=sua_chave
+set GEMINI_MODEL=gemini-3.8-flash
 .venv\Scripts\python.exe -m app.cli copy-preview 1 --channel instagram_feed
 ```
 
-Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. No P1, apenas o hook genérico validado pode entrar nos pacotes locais de vídeo; fatos, legenda canônica, URLs, score e compliance continuam em Python. Ollama local é preferido quando o modelo responde; llama.cpp local é o segundo provider e template é o fallback. Saída com fatos não verificados, falha ou timeout não interrompe o pipeline. O uso opcional de llama.cpp continua com [parâmetros oficiais da CLI](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md). Nenhum provider usa serviço remoto.
+Granite GGUF via llama.cpp existe como fallback experimental e fica desligado por padrão. Para um host que já tenha sido homologado:
 
-Cada tentativa local grava no stderr um JSON compacto com `provider`, `status`, `duration_ms`, `fallback_reason` e `error_type`, sem prompt, resposta, URL ou segredo. Se o retorno for `LOCAL_GENERATION_FAILED`, confirme primeiro o timeout efetivo e consulte esse evento e o journal do Ollama. No Acer com HDD e 4 GB, o cold start foi variável: houve timeout até em ensaio diagnóstico de 900 s, mas outra passagem real pelo `copy-preview` respondeu em 199,823 s após `ollama stop`; a repetição warm respondeu em 5,057 s. O Qwen executou nas duas últimas passagens, mas a validação rejeitou o texto e usou `source=template`, `fallback_reason=SUGGESTION_REJECTED`. A operação mantém timeout de 300 s e fallback determinístico. Veja as medições e limites em `STATUS.md`.
+```bat
+set AI_LOCAL_ENABLED=true
+set GRANITE_CLI_PATH=C:\caminho\llama-cli.exe
+set GRANITE_MODEL_PATH=C:\caminho\granite.gguf
+```
+
+Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. A IA pode usar somente tokens seguros do título/categoria no hook; preço, desconto, cupom, estoque, URLs, disclosure, score e compliance continuam em Python. A ordem automática é Gemini -> Granite (somente se habilitado) -> TemplateProvider. Timeout, resposta inválida ou rate limit não interrompem o pipeline.
+
+Duas falhas/rejeições consecutivas abrem o circuit breaker do provider por 300 s por padrão. Cada tentativa grava no stderr somente `provider`, `status`, `duration_ms`, `fallback_reason` e `error_type`; chave, prompt, resposta e URL não são logados. No free tier do Gemini, trate somente dados públicos de catálogo: o Google informa que conteúdo do nível gratuito pode ser usado para melhorar seus produtos.
 
 ## Agendamento P0
 
@@ -238,9 +246,9 @@ O teste FFmpeg é executado quando `ffmpeg` está no PATH ou `imageio-ffmpeg` es
 
 ## Execução contínua no notebook Acer com Lubuntu
 
-O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Use `qwen3.5:2b`; Qwen 4B não é suportado nesse hardware. Ollama deve escutar em `127.0.0.1:11434`. A aplicação faz uma inferência por vez, com `think=false`, contexto 1024, temperatura 0.3, timeout de 300 s e keep-alive de 2 minutos. Python continua responsável por todos os dados factuais e pelas regras de distribuição.
+O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Qwen/Ollama não fazem mais parte da rota operacional. Sem `GEMINI_API_KEY`, o bot usa `TemplateProvider` e continua funcional; quando a chave estiver configurada, Gemini é o provider principal. Granite local permanece `AI_LOCAL_ENABLED=false` até uma homologação específica demonstrar latência e uso de RAM/swap aceitáveis.
 
-Depois de autenticar o GitHub no notebook para acessar o repositório privado:
+Depois de autenticar o GitHub no notebook:
 
 ```bash
 git clone https://github.com/iagoluch/bot-afiliado.git
@@ -248,7 +256,7 @@ cd bot-afiliado
 bash scripts/install.sh
 ```
 
-`install.sh` cria `.venv`, instala as dependências Python e cria os diretórios locais. Ele verifica Ollama, o modelo e FFmpeg; ausência de Ollama/FFmpeg produz aviso e mantém os fallbacks seguros. Nenhum modelo é baixado automaticamente. Se o Ollama já estiver instalado, mas faltar o modelo, instale-o manualmente no notebook com `ollama pull qwen3.5:2b` e confira com `ollama list`.
+`install.sh` cria `.venv`, instala as dependências Python e cria os diretórios locais. Não baixa nenhuma IA. FFmpeg ausente produz aviso e mantém imagens/storyboards com vídeo pendente.
 
 Mantenha `DRY_RUN=true` em `.env`. Com `WORKER_SOURCE_PATH` vazio, o worker usa `examples/shopee_offers.sample.csv` somente em DRY_RUN. Teste e inicie os processos:
 
@@ -259,7 +267,7 @@ bash scripts/start.sh worker
 
 Em outro terminal, `bash scripts/start.sh web` abre a interface local em `http://127.0.0.1:8000`. O worker obtém lock local exclusivo, executa slots e drena a fila SQLite, gera pacotes/ativos de cada oferta de forma sequencial, dorme em idle e registra heartbeat. SIGTERM/SIGINT encerram o processo; após reinício, o estado da fila permanece no banco. Envios Telegram reais de resultado incerto continuam em `PROCESSING` e exigem reconciliação manual, sem reenvio cego.
 
-Para instalar worker e web como serviços persistentes do systemd, execute como usuário normal:
+Para instalar worker e web como serviços persistentes do systemd:
 
 ```bash
 bash scripts/install-systemd.sh
@@ -267,4 +275,5 @@ bash scripts/status.sh
 .venv/bin/python -m app.cli runtime-status
 ```
 
-`runtime-status` também é executado por `scripts/status.sh` e mostra banco, heartbeat, último ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN sem segredos. Scripts e units delegam a leitura de `.env` ao mesmo parser Python; as units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`. Em host sem systemd, valide os scripts e rode `start.sh` diretamente, sem tentar habilitar units.
+`runtime-status` mostra banco, heartbeat, último ciclo, profundidade da fila, configuração segura dos providers de IA, FFmpeg e DRY_RUN sem exibir chaves. Scripts e units delegam a leitura de `.env` ao mesmo parser Python; as units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`.
+
