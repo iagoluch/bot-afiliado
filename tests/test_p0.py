@@ -280,6 +280,12 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
     assert db.rows("SELECT id FROM publish_queue") == []
 
 
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_money_parser_rejects_non_finite_values(value: str) -> None:
+    with pytest.raises(ValueError, match="valor monetario invalido"):
+        money_to_cents(value)
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     (
@@ -294,12 +300,6 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
         ({"affiliate_network": ""}, "affiliate_network ausente"),
     ),
 )
-@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
-def test_money_parser_rejects_non_finite_values(value: str) -> None:
-    with pytest.raises(ValueError, match="valor monetario invalido"):
-        money_to_cents(value)
-
-
 def test_offer_domain_rejects_invalid_canonical_values(changes: dict, message: str) -> None:
     offer = {
         "merchant": "Shopee",
