@@ -498,7 +498,7 @@ class Database:
         with self.connect() as connection:
             if content_key:
                 row = connection.execute(
-                    """SELECT c.id,
+                    """SELECT c.id,c.offer_id,c.channel,c.format,c.campaign_id,
                               (
                                   EXISTS(
                                       SELECT 1 FROM social_queue s
@@ -516,6 +516,13 @@ class Database:
                     (content_key,),
                 ).fetchone()
                 if row:
+                    if (
+                        int(row["offer_id"]) != int(offer_id)
+                        or str(row["channel"]) != channel
+                        or str(row["format"]) != format
+                        or str(row["campaign_id"]) != campaign_id
+                    ):
+                        raise ValueError("content_key conflita com outro contexto")
                     if not bool(row["terminal"]):
                         connection.execute(
                             "UPDATE content_packages SET body=?,format=?,payload_json=?,assets_json=?,campaign_id=? WHERE id=?",

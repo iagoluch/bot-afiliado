@@ -181,6 +181,64 @@ def test_terminal_content_package_is_immutable_but_draft_can_refresh(tmp_path: P
     )[0]["body"] == "#publi\ndraft-2"
 
 
+def test_content_key_cannot_mutate_a_different_content_context(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    first = insert_offer(db)
+    second = db.upsert_offer(Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="content-key-second",
+        title="Segundo produto",
+        current_price_cents=8000,
+        source_url="https://shopee.com.br/product/1/content-key-second",
+        affiliate_url="https://s.shopee.com.br/content-key-second",
+        stock_status="IN_STOCK",
+    ))
+
+    content_id = db.add_content(
+        first,
+        "instagram",
+        "#publi\noriginal",
+        format="story",
+        campaign_id="campaign-a",
+        content_key="shared-content-key",
+    )
+
+    with pytest.raises(ValueError, match="content_key conflita com outro contexto"):
+        db.add_content(
+            second,
+            "instagram",
+            "#publi\nwrong-offer",
+            format="story",
+            campaign_id="campaign-a",
+            content_key="shared-content-key",
+        )
+
+    with pytest.raises(ValueError, match="content_key conflita com outro contexto"):
+        db.add_content(
+            first,
+            "instagram",
+            "#publi\nwrong-campaign",
+            format="story",
+            campaign_id="campaign-b",
+            content_key="shared-content-key",
+        )
+
+    stored = db.rows(
+        "SELECT offer_id,channel,format,campaign_id,body FROM content_packages WHERE id=?",
+        (content_id,),
+    )[0]
+    assert dict(stored) == {
+        "offer_id": first,
+        "channel": "instagram",
+        "format": "story",
+        "campaign_id": "campaign-a",
+        "body": "#publi\noriginal",
+    }
+
+
 @pytest.mark.parametrize("terminal_status", ["PUBLISHED", "CANCELLED"])
 def test_p1_regeneration_never_reopens_terminal_social_queue(
     tmp_path: Path, terminal_status: str,
