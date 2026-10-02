@@ -499,7 +499,14 @@ class Database:
         now = utc_now()
         with self.connect() as connection:
             connection.execute(
-                "INSERT INTO social_queue(offer_id,content_package_id,channel,format,status,required_action,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(content_package_id) DO UPDATE SET status=excluded.status,required_action=excluded.required_action,updated_at=excluded.updated_at",
+                """INSERT INTO social_queue(
+                       offer_id,content_package_id,channel,format,status,required_action,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?,?,?)
+                   ON CONFLICT(content_package_id) DO UPDATE SET
+                       status=excluded.status,
+                       required_action=excluded.required_action,
+                       updated_at=excluded.updated_at
+                   WHERE social_queue.status NOT IN ('PUBLISHED','CANCELLED')""",
                 (offer_id, content_id, channel, format, status, required_action, now, now),
             )
             row = connection.execute("SELECT id FROM social_queue WHERE content_package_id=?", (content_id,)).fetchone()
