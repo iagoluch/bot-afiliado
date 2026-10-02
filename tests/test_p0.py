@@ -430,6 +430,41 @@ def test_category_cooldown_prevents_channel_domination(tmp_path: Path) -> None:
     assert is_in_cooldown(db, second, "telegram", "campaign-b")
 
 
+def test_failed_retry_queue_keeps_category_in_cooldown(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    first = insert_offer(db)
+    second = insert_second_offer(db)
+    body = telegram_message(
+        verified_offer_data(db, first),
+        telegram_tracking_url(settings.public_base_url, first, "retrying"),
+    )
+    content_id = db.add_content(first, "telegram", body)
+    queue_id = db.enqueue(
+        first,
+        content_id,
+        "telegram",
+        "retrying",
+        "retrying-creative",
+        "retrying-key",
+        dry_run=True,
+    )
+    db.fail_publication(
+        queue_id,
+        "falha temporaria",
+        "2099-01-01T00:00:00+00:00",
+    )
+
+    assert is_in_cooldown(
+        db,
+        second,
+        "telegram",
+        "other-campaign",
+        dry_run=True,
+    )
+
+
 def test_tracking_records_click_and_preserves_affiliate_url_exactly(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
