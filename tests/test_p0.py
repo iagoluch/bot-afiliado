@@ -246,6 +246,24 @@ def test_tracking_records_click_and_preserves_affiliate_url_exactly(tmp_path: Pa
     assert db.overview()["conversions"] == 0
 
 
+def test_tracking_bounds_untrusted_referer_header(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    client = TestClient(create_app(settings, db))
+
+    response = client.get(
+        f"/go/{offer_id}?channel=site&campaign_id=referer-test&creative_id=bounded",
+        follow_redirects=False,
+        headers={"referer": "https://example.test/" + ("x" * 5000)},
+    )
+
+    assert response.status_code == 302
+    click = db.rows("SELECT referrer FROM clicks")[0]
+    assert len(click["referrer"]) == 2048
+
+
 def test_published_telegram_link_keeps_its_affiliate_destination_after_new_import(tmp_path: Path) -> None:
     settings = replace(
         settings_for(tmp_path), dry_run=False, public_base_url="https://offers.example", admin_password="test",
