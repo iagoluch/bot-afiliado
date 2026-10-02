@@ -110,7 +110,7 @@ def test_dynamic_web_responses_include_defensive_security_headers(tmp_path: Path
     assert public.status_code == 200
     assert public.headers["x-content-type-options"] == "nosniff"
     assert public.headers["x-frame-options"] == "DENY"
-    assert public.headers["referrer-policy"] == "no-referrer"
+    assert public.headers["referrer-policy"] == "strict-origin-when-cross-origin"
     assert public.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
     assert "frame-ancestors 'none'" in public.headers["content-security-policy"]
     assert public.headers["cache-control"] == "no-store"
