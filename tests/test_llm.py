@@ -77,11 +77,30 @@ def test_preview_falls_back_without_configured_ai(tmp_path: Path) -> None:
     draft = copy_preview(_offer(), "instagram_feed", settings)
     assert draft["status"] == "REVIEW_ONLY"
     assert draft["source"] == "template"
-    assert draft["fallback_reason"] == "AI_PROVIDER_NOT_CONFIGURED"
+    assert draft["fallback_reason"] == "AI_NOT_USED_FOR_CHANNEL"
     assert "R$ 90,00" in draft["canonical_caption"]
     assert "R$ 120,00" not in draft["canonical_caption"]
     assert "#publi" in draft["canonical_caption"]
     assert not (tmp_path / "preview.db").exists()
+
+
+def test_non_video_preview_skips_implicit_ai_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def forbidden_safe_hook(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("non-video preview must not call implicit AI")
+
+    monkeypatch.setattr(llm_module, "safe_hook", forbidden_safe_hook)
+    draft = copy_preview(_offer(), "instagram_feed", _settings(tmp_path))
+
+    assert called is False
+    assert draft["source"] == "template"
+    assert draft["fallback_reason"] == "AI_NOT_USED_FOR_CHANNEL"
+    assert draft["script"] == []
 
 
 def test_cloudflare_request_keeps_token_in_header_and_marketplace_text_as_data(
