@@ -317,6 +317,23 @@ def test_ffmpeg_uses_the_shared_heavy_work_slot(monkeypatch: pytest.MonkeyPatch,
     assert not active
 
 
+def test_ffmpeg_configured_command_resolves_via_path_without_masking_bad_explicit_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    executable = tmp_path / "ffmpeg"
+    executable.touch()
+    monkeypatch.setattr(
+        "app.services.media.shutil.which",
+        lambda command: str(executable) if command == "ffmpeg" else None,
+    )
+
+    by_command = CreativeGenerator(tmp_path, ffmpeg_path="ffmpeg")
+    assert by_command._ffmpeg_executable() == str(executable)
+
+    explicit_missing = CreativeGenerator(tmp_path, ffmpeg_path=str(tmp_path / "missing" / "ffmpeg"))
+    assert explicit_missing._ffmpeg_executable() is None
+
+
 def test_offer_hub_search_and_page_require_conscious_click_and_escape_html(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
