@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import io
 import json
 import math
@@ -37,8 +38,23 @@ class _NoRedirect(HTTPRedirectHandler):
 def _approved_image_url(value: str, allowed_hosts: tuple[str, ...] = ()) -> bool:
     parsed = urlsplit(value)
     host = (parsed.hostname or "").lower()
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.port is not None
+        or host == "localhost"
+        or host.endswith(".local")
+        or (address is not None and not address.is_global)
+    ):
+        return False
     configured = {entry.lower().strip(".") for entry in allowed_hosts if entry}
-    return parsed.scheme == "https" and (
+    return (
         host == "susercontent.com"
         or host.endswith(".susercontent.com")
         or host == "shopee.com.br"
