@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import shutil
 import subprocess
 import warnings
@@ -23,6 +24,9 @@ from app.services.site import offer_slug
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
 MAX_IMAGE_DIMENSION = 6_000
+MAX_VIDEO_SCENES = 12
+MAX_VIDEO_DURATION_SECONDS = 90.0
+MAX_SCENE_TEXT_CHARS = 500
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -401,6 +405,41 @@ class CreativeAssets:
     ab_previews: tuple[Path, ...]
 
 
+def _validate_video_script(
+    script: tuple[dict[str, Any], ...],
+    *,
+    duration_scale: float,
+    label: str,
+) -> None:
+    if not math.isfinite(duration_scale) or duration_scale <= 0:
+        raise ValueError("duration_scale precisa ser positivo e finito")
+    if not script or len(script) > MAX_VIDEO_SCENES:
+        raise ValueError(f"{label} precisa ter entre 1 e {MAX_VIDEO_SCENES} cenas")
+
+    previous_end = 0.0
+    total = 0.0
+    for index, scene in enumerate(script, start=1):
+        try:
+            start = float(scene["start"])
+            end = float(scene["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"{label} cena {index} tem tempo invalido") from exc
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+            raise ValueError(f"{label} cena {index} tem intervalo invalido")
+        if start < previous_end:
+            raise ValueError(f"{label} cenas precisam estar em ordem sem sobreposicao")
+        text = str(scene.get("text") or "").strip()
+        if not text or len(text) > MAX_SCENE_TEXT_CHARS:
+            raise ValueError(f"{label} cena {index} tem texto invalido")
+        total += (end - start) * duration_scale
+        previous_end = end
+
+    if total > MAX_VIDEO_DURATION_SECONDS:
+        raise ValueError(
+            f"{label} excede duracao maxima de {MAX_VIDEO_DURATION_SECONDS:g} segundos"
+        )
+
+
 class CreativeGenerator:
     def __init__(
         self,
@@ -574,6 +613,8 @@ class CreativeGenerator:
         *,
         duration_scale: float = 1.0,
     ) -> CreativeAssets:
+        _validate_video_script(reel_script, duration_scale=duration_scale, label="Reel")
+        _validate_video_script(tiktok_script, duration_scale=duration_scale, label="TikTok")
         output = self._output_dir(offer, campaign_id)
         product = self._product_image(offer)
         title = str(offer["title"])
