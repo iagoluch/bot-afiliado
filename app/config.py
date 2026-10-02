@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +16,7 @@ def load_project_env(env_file: Path | str = PROJECT_ENV_FILE) -> dict[str, str]:
     """Load literal KEY=VALUE pairs without executing shell syntax.
 
     Existing process variables win over the project file. The returned mapping
-    contains only values added to ``os.environ`` by this call.
+    contains only values added to os.environ by this call.
     """
     path = Path(env_file)
     if not path.is_file():
@@ -113,13 +113,16 @@ class Settings:
     instagram_asset_allowed_hosts: tuple[str, ...] = ()
     instagram_container_api_enabled: bool = False
     instagram_facebook_login_ready: bool = False
-    ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3.5:2b"
-    ollama_timeout_seconds: int = 300
-    ollama_context_length: int = 1024
-    ollama_temperature: float = 0.3
-    ollama_keep_alive: str = "2m"
-    ollama_think: bool = False
+    ai_remote_provider: str = "gemini"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.8-flash"
+    ai_remote_timeout_seconds: int = 12
+    ai_local_enabled: bool = False
+    granite_cli_path: str | None = None
+    granite_model_path: str | None = None
+    ai_local_timeout_seconds: int = 20
+    ai_circuit_failures: int = 2
+    ai_circuit_cooldown_seconds: int = 300
 
     @classmethod
     def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
@@ -153,7 +156,10 @@ class Settings:
                 "telegram": "public",
                 "instagram": "public",
                 "tiktok": "public",
-                **{str(key).lower(): str(value).lower() for key, value in _json_object_env("CHANNEL_VISIBILITY_JSON").items()},
+                **{
+                    str(key).lower(): str(value).lower()
+                    for key, value in _json_object_env("CHANNEL_VISIBILITY_JSON").items()
+                },
             },
             merchant_channel_rules={
                 str(key).lower(): value
@@ -171,20 +177,23 @@ class Settings:
             ),
             instagram_container_api_enabled=_bool_env("INSTAGRAM_REEL_CONTAINER_API_ENABLED", False),
             instagram_facebook_login_ready=_bool_env("INSTAGRAM_FACEBOOK_LOGIN_READY", False),
-            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:2b").strip(),
-            ollama_timeout_seconds=_int_env("OLLAMA_TIMEOUT_SECONDS", 300),
-            ollama_context_length=_int_env("OLLAMA_CONTEXT_LENGTH", 1024),
-            ollama_temperature=_float_env("OLLAMA_TEMPERATURE", 0.3, minimum=0.0, maximum=2.0),
-            ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "2m").strip(),
-            ollama_think=_bool_env("OLLAMA_THINK", False),
+            ai_remote_provider=os.getenv("AI_REMOTE_PROVIDER", "gemini").strip().lower() or "gemini",
+            gemini_api_key=(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip() or None,
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip(),
+            ai_remote_timeout_seconds=_int_env("AI_REMOTE_TIMEOUT_SECONDS", 12),
+            ai_local_enabled=_bool_env("AI_LOCAL_ENABLED", False),
+            granite_cli_path=os.getenv("GRANITE_CLI_PATH") or None,
+            granite_model_path=os.getenv("GRANITE_MODEL_PATH") or None,
+            ai_local_timeout_seconds=_int_env("AI_LOCAL_TIMEOUT_SECONDS", 20),
+            ai_circuit_failures=_int_env("AI_CIRCUIT_FAILURES", 2),
+            ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
         )
-        if settings.ollama_think:
-            raise ValueError("OLLAMA_THINK deve permanecer false neste hardware")
-        if not settings.ollama_model:
-            raise ValueError("OLLAMA_MODEL nao pode ser vazio")
-        if not settings.ollama_keep_alive:
-            raise ValueError("OLLAMA_KEEP_ALIVE nao pode ser vazio")
+        if settings.ai_remote_provider not in {"gemini", "none"}:
+            raise ValueError("AI_REMOTE_PROVIDER deve ser gemini ou none")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", settings.gemini_model):
+            raise ValueError("GEMINI_MODEL invalido")
+        if settings.ai_local_enabled and not (settings.granite_cli_path and settings.granite_model_path):
+            raise ValueError("AI_LOCAL_ENABLED exige GRANITE_CLI_PATH e GRANITE_MODEL_PATH")
         if settings.web_bind_port > 65535:
             raise ValueError("WEB_PORT deve ser menor ou igual a 65535")
         return settings
