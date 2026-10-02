@@ -48,6 +48,8 @@ def money_to_cents(value: str | int | float | Decimal | None) -> int | None:
         amount = Decimal(cleaned)
     except InvalidOperation as exc:
         raise ValueError(f"valor monetario invalido: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"valor monetario invalido: {value!r}")
     if amount < 0:
         raise ValueError("valor monetario nao pode ser negativo")
     return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
