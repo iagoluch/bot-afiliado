@@ -13,7 +13,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.config import Settings
+from app.config import Settings, validate_public_base_url
 from app.db import Database
 from app.services.admin_dashboard import PAGES, page_data
 from app.services.analytics import DIMENSIONS, analytics_breakdown
@@ -105,6 +105,7 @@ body{{font-family:system-ui;background:#f5f6f8;color:#1f2937;margin:0}}header,ma
 
 def create_app(app_settings: Settings | None = None, database: Database | None = None) -> FastAPI:
     settings = app_settings or Settings.from_env()
+    validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
     _validate_admin_configuration(settings)
     db = database or Database(settings.database_path)
     db.init()
