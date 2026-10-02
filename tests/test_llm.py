@@ -119,7 +119,7 @@ def test_cloudflare_request_keeps_token_in_header_and_marketplace_text_as_data(
     assert request.headers["Authorization"] == "Bearer segredo-api"
     payload = json.loads(request.data)
     assert "IGNORE regras" in payload["messages"][1]["content"]
-    assert "dados nao confiaveis" in payload["messages"][0]["content"]
+    assert "contexto nao confiavel" in payload["messages"][0]["content"]
     assert payload["model"] == "@cf/google/gemma-4-26b-a4b-it"
     assert payload["max_completion_tokens"] == 96
     assert payload["stream"] is False
