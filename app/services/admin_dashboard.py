@@ -68,11 +68,23 @@ def page_data(db: Database, settings: Settings, page: str, *, dimension: str = "
             FROM offer_totals o LEFT JOIN click_totals c USING(merchant) LEFT JOIN conversion_totals v USING(merchant) ORDER BY o.merchant""")
     if page == "affiliate-programs":
         adapters = (ShopeeManualAdapter, AmazonCreatorsAdapter, AwinFeedAdapter, MercadoLivreManualAdapter)
-        counts = {row["affiliate_network"]: row["offers"] for row in _rows(db, "SELECT affiliate_network,COUNT(*) offers FROM offers GROUP BY affiliate_network")}
+        counts = {
+            row["affiliate_network"]: int(row["offers"])
+            for row in _rows(
+                db,
+                "SELECT affiliate_network,COUNT(*) offers FROM offers GROUP BY affiliate_network",
+            )
+        }
+        networks = {
+            ShopeeManualAdapter.name: ("Shopee Afiliados",),
+            AmazonCreatorsAdapter.name: ("Amazon Associates", "Amazon Creators"),
+            AwinFeedAdapter.name: ("Awin",),
+            MercadoLivreManualAdapter.name: ("Mercado Livre Afiliados e Criadores",),
+        }
         return [{
             "program": adapter.name,
             "integration_status": adapter.integration_status,
-            "offers": next((count for network, count in counts.items() if adapter.name.split("_")[0].lower() in network.lower()), 0),
+            "offers": sum(counts.get(network, 0) for network in networks[adapter.name]),
             "capabilities": ", ".join(f"{key.value}:{value.value}" for key, value in adapter.capabilities.items()),
         } for adapter in adapters]
     if page == "clicks":
