@@ -37,12 +37,12 @@ def is_in_cooldown(
     if category:
         category_cutoff = (now - timedelta(minutes=category_minutes)).isoformat(timespec="seconds")
         if db.rows(
-            "SELECT 1 FROM publications p JOIN offers o ON o.id=p.offer_id WHERE p.channel=? AND p.dry_run=0 AND o.category=? AND p.published_at>=? LIMIT 1",
+            "SELECT 1 FROM publications p JOIN offers o ON o.id=p.offer_id WHERE p.channel=? AND p.dry_run=0 AND o.category=? COLLATE NOCASE AND p.published_at>=? LIMIT 1",
             (channel, category, category_cutoff),
         ):
             return True
         if db.rows(
-            "SELECT 1 FROM publish_queue q JOIN offers o ON o.id=q.offer_id WHERE q.channel=? AND q.dry_run=? AND q.status IN ('PENDING','PROCESSING','FAILED') AND o.category=? LIMIT 1",
+            "SELECT 1 FROM publish_queue q JOIN offers o ON o.id=q.offer_id WHERE q.channel=? AND q.dry_run=? AND q.status IN ('PENDING','PROCESSING','FAILED') AND o.category=? COLLATE NOCASE LIMIT 1",
             (channel, int(dry_run), category),
         ):
             return True
