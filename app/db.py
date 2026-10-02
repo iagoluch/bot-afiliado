@@ -473,12 +473,30 @@ class Database:
     ) -> int:
         with self.connect() as connection:
             if content_key:
-                row = connection.execute("SELECT id FROM content_packages WHERE content_key=?", (content_key,)).fetchone()
+                row = connection.execute(
+                    """SELECT c.id,
+                              (
+                                  EXISTS(
+                                      SELECT 1 FROM social_queue s
+                                      WHERE s.content_package_id=c.id
+                                        AND s.status IN ('PUBLISHED','CANCELLED')
+                                  )
+                                  OR EXISTS(
+                                      SELECT 1 FROM publish_queue q
+                                      WHERE q.content_package_id=c.id
+                                        AND q.status IN ('PUBLISHED','SIMULATED')
+                                  )
+                              ) terminal
+                       FROM content_packages c
+                       WHERE c.content_key=?""",
+                    (content_key,),
+                ).fetchone()
                 if row:
-                    connection.execute(
-                        "UPDATE content_packages SET body=?,format=?,payload_json=?,assets_json=?,campaign_id=? WHERE id=?",
-                        (body, format, json.dumps(payload or {}, ensure_ascii=False), json.dumps(assets or [], ensure_ascii=False), campaign_id, row["id"]),
-                    )
+                    if not bool(row["terminal"]):
+                        connection.execute(
+                            "UPDATE content_packages SET body=?,format=?,payload_json=?,assets_json=?,campaign_id=? WHERE id=?",
+                            (body, format, json.dumps(payload or {}, ensure_ascii=False), json.dumps(assets or [], ensure_ascii=False), campaign_id, row["id"]),
+                        )
                     return int(row["id"])
             cursor = connection.execute(
                 "INSERT INTO content_packages(offer_id,channel,body,format,payload_json,assets_json,campaign_id,content_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
