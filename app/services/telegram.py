@@ -10,6 +10,7 @@ from urllib.error import HTTPError, URLError
 
 
 MAX_RESPONSE_BYTES = 64 * 1024
+MAX_MESSAGE_CHARS = 4096
 
 
 class TelegramAPIError(RuntimeError):
@@ -84,6 +85,10 @@ class TelegramClient:
         self._last_attempt_at: float | None = None
 
     def send_message(self, text: str) -> TelegramResult:
+        if not 1 <= len(text) <= MAX_MESSAGE_CHARS:
+            raise TelegramAPIError(
+                f"mensagem Telegram deve ter entre 1 e {MAX_MESSAGE_CHARS} caracteres"
+            )
         if self.dry_run:
             return TelegramResult(message_id="dry-run", dry_run=True)
         if not self.token or not self.chat_id:
@@ -94,7 +99,7 @@ class TelegramClient:
                 self._sleep(delay)
         self._last_attempt_at = self._clock()
         endpoint = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        body = urllib.parse.urlencode({"chat_id": self.chat_id, "text": text, "disable_web_page_preview": "false"}).encode()
+        body = urllib.parse.urlencode({"chat_id": self.chat_id, "text": text}).encode()
         request = urllib.request.Request(endpoint, data=body, method="POST")
         try:
             with self.opener(request, timeout=20) as response:
