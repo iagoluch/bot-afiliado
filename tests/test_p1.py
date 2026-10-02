@@ -22,6 +22,7 @@ from app.services.media import (
     _NoRedirect,
     _approved_image_url,
     _fit_text_block,
+    _validate_video_script,
     load_approved_product_image,
 )
 from app.services.p1 import P1Pipeline
@@ -65,6 +66,39 @@ def insert_offer(db: Database, **overrides) -> int:
     }
     data.update(overrides)
     return db.upsert_offer(Offer(**data))
+
+
+@pytest.mark.parametrize("duration_scale", [0.0, -1.0, float("nan"), float("inf")])
+def test_video_plan_rejects_nonpositive_or_nonfinite_duration_scale(duration_scale: float) -> None:
+    script = ({"start": 0, "end": 2, "role": "hook", "text": "Produto"},)
+    with pytest.raises(ValueError, match="duration_scale"):
+        _validate_video_script(script, duration_scale=duration_scale, label="Reel")
+
+
+def test_video_plan_bounds_duration_scene_count_and_text() -> None:
+    with pytest.raises(ValueError, match="duracao maxima"):
+        _validate_video_script(
+            ({"start": 0, "end": 100, "role": "hook", "text": "Produto"},),
+            duration_scale=1.0,
+            label="Reel",
+        )
+
+    with pytest.raises(ValueError, match="entre 1 e 12 cenas"):
+        _validate_video_script(
+            tuple(
+                {"start": index, "end": index + 0.5, "role": "hook", "text": "Produto"}
+                for index in range(13)
+            ),
+            duration_scale=1.0,
+            label="Reel",
+        )
+
+    with pytest.raises(ValueError, match="texto invalido"):
+        _validate_video_script(
+            ({"start": 0, "end": 1, "role": "hook", "text": "X" * 501},),
+            duration_scale=1.0,
+            label="Reel",
+        )
 
 
 def fake_product(_: str) -> Image.Image:
