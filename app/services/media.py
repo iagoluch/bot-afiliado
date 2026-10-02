@@ -440,12 +440,10 @@ class CreativeGenerator:
 
     @staticmethod
     def _scene_secondary(role: str) -> str:
+        # Benefit e CTA já carregam a mensagem completa no texto principal.
+        # Repeti-la em uma linha secundária reduz hierarquia e parecia bug visual.
         if role == "price":
             return "Preço informado na última atualização"
-        if role == "benefit":
-            return "Confira as condições atuais"
-        if role == "cta":
-            return "Confira preço e disponibilidade no link"
         return ""
 
     def _animated_video_plan(
