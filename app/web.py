@@ -141,10 +141,22 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
         return response
 
     @app.get("/health")
-    def health(details: bool = Query(default=False)) -> dict:
+    def health(
+        request: Request,
+        details: bool = Query(default=False),
+        authorization: str | None = Header(default=None),
+    ) -> dict:
         basic = {"status": "ok", "dry_run": settings.dry_run}
         if not details:
             return basic
+        if _admin_exposed(settings) and request.url.scheme != "https":
+            raise HTTPException(status_code=426, detail="HTTPS obrigatorio")
+        if settings.admin_password and not _authorized(authorization, settings.admin_password):
+            raise HTTPException(
+                status_code=401,
+                detail="autenticacao administrativa obrigatoria",
+                headers={"WWW-Authenticate": 'Basic realm="BOT AFILIADO admin"'},
+            )
         return {**basic, "runtime": runtime_status(db, settings)}
 
     @app.get("/api/overview")
