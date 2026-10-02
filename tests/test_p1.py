@@ -71,6 +71,15 @@ def fake_product(_: str) -> Image.Image:
     return Image.new("RGB", (640, 480), "#38bdf8")
 
 
+def test_p1_rejects_real_mode_with_nonpublic_tracking_base(tmp_path: Path) -> None:
+    settings = replace(settings_for(tmp_path), dry_run=False)
+    db = Database(settings.database_path)
+    db.init()
+
+    with pytest.raises(ValueError, match="HTTPS"):
+        P1Pipeline(db, settings, provider=TemplateProvider())
+
+
 def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -> None:
     settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg.exe"))
     db = Database(settings.database_path)
