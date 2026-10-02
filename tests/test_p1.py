@@ -179,6 +179,9 @@ def test_renderer_wraps_long_text_without_clipping_and_removes_scene_debug(
     assert len(assets.ab_previews) == 4
     assert all(path.exists() for path in assets.ab_previews)
     assert all("Cena " not in secondary for secondary in captured_secondary)
+    assert generator._scene_secondary("benefit") == ""
+    assert generator._scene_secondary("cta") == ""
+    assert generator._scene_secondary("price") == "Preço informado na última atualização"
     assert assets.reel_video.status == "FFMPEG_UNAVAILABLE"
     assert assets.tiktok_video.status == "FFMPEG_UNAVAILABLE"
 
