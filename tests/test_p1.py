@@ -142,12 +142,15 @@ def test_renderer_wraps_long_text_without_clipping_and_removes_scene_debug(
     )
 
     captured_secondary: list[str] = []
+    captured_video_titles: list[str] = []
     from app.services import media as media_module
 
     original_card = media_module._card
 
     def observed_card(*args, **kwargs):
         captured_secondary.append(str(kwargs.get("secondary") or ""))
+        if kwargs.get("role") == "hook":
+            captured_video_titles.append(str(kwargs.get("title") or ""))
         return original_card(*args, **kwargs)
 
     monkeypatch.setattr(media_module, "_card", observed_card)
@@ -182,6 +185,8 @@ def test_renderer_wraps_long_text_without_clipping_and_removes_scene_debug(
     assert generator._scene_secondary("benefit") == ""
     assert generator._scene_secondary("cta") == ""
     assert generator._scene_secondary("price") == "Preço informado na última atualização"
+    assert captured_video_titles
+    assert all(title == "" for title in captured_video_titles)
     assert assets.reel_video.status == "FFMPEG_UNAVAILABLE"
     assert assets.tiktok_video.status == "FFMPEG_UNAVAILABLE"
 
