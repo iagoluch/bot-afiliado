@@ -51,7 +51,23 @@ class P1Pipeline:
 
     @staticmethod
     def _content_key(offer: dict[str, Any], spec: ContentSpec, campaign_id: str) -> str:
-        raw = f"p1:{offer['id']}:{offer['current_price_cents']}:{offer.get('coupon') or ''}:{spec.channel}:{spec.format}:{campaign_id}:v1"
+        metadata = offer.get("tracking_metadata")
+        verification = metadata.get("discount_verification") if isinstance(metadata, dict) else None
+        reference_price = (
+            verification.get("reference_price_cents")
+            if isinstance(verification, dict) and verification.get("method") == "PRICE_HISTORY"
+            else None
+        )
+        facts = {
+            "version": 2,
+            "offer_id": offer["id"],
+            "content_fingerprint": offer.get("content_fingerprint"),
+            "verified_reference_price_cents": reference_price,
+            "channel": spec.channel,
+            "format": spec.format,
+            "campaign_id": campaign_id,
+        }
+        raw = json.dumps(facts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def _assets_for(self, spec: ContentSpec, assets: CreativeAssets) -> tuple[list[str], str | None]:
