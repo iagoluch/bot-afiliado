@@ -867,6 +867,12 @@ def test_conversion_reimport_preserves_original_attribution(tmp_path: Path) -> N
     assert sparse["commission_cents"] == 1300
     assert sparse["status"] == "PAID"
 
+    with pytest.raises(ValueError, match="merchant da conversao difere"):
+        db.import_conversion({
+            **updated,
+            "merchant": "Outra Loja",
+        })
+
     with pytest.raises(ValueError, match="atribuicao da conversao difere da importacao original"):
         db.import_conversion({
             **updated,
