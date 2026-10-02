@@ -9,7 +9,7 @@ from app.adapters.awin_feed import AwinFeedAdapter
 from app.adapters.base import AffiliateAdapter
 from app.adapters.mercadolivre_manual import MercadoLivreManualAdapter
 from app.adapters.shopee_manual import ShopeeManualAdapter
-from app.config import Settings
+from app.config import Settings, validate_public_base_url
 from app.db import Database
 from app.models import Offer, utc_now
 from app.services.compliance import ComplianceError, merchant_key, validate_content, validate_distribution, validate_offer
@@ -28,6 +28,7 @@ class Pipeline:
         *,
         source_adapter: str = "shopee",
     ):
+        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
         self.db = db
         self.settings = settings
         self.source_adapter = source_adapter
