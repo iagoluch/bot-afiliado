@@ -50,19 +50,28 @@ def test_project_env_loads_without_shell_and_preserves_process_precedence(
 def test_settings_reads_ai_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "GEMINI_API_KEY=secret\n"
-        "GEMINI_MODEL=gemini-3.8-flash\n"
+        "CLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef\n"
+        "CLOUDFLARE_API_TOKEN=secret\n"
+        "CLOUDFLARE_AI_MODEL=@cf/google/gemma-4-26b-a4b-it\n"
         "AI_REMOTE_TIMEOUT_SECONDS=9\n"
         "AI_LOCAL_ENABLED=false\n",
         encoding="utf-8",
     )
-    for name in ("GEMINI_API_KEY","GOOGLE_API_KEY","GEMINI_MODEL","AI_REMOTE_TIMEOUT_SECONDS","AI_LOCAL_ENABLED"):
+    for name in (
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_AUTH_TOKEN",
+        "CLOUDFLARE_AI_MODEL",
+        "AI_REMOTE_TIMEOUT_SECONDS",
+        "AI_LOCAL_ENABLED",
+    ):
         monkeypatch.delenv(name, raising=False)
 
     settings = Settings.from_env(env_file=env_file)
 
-    assert settings.gemini_api_key == "secret"
-    assert settings.gemini_model == "gemini-3.8-flash"
+    assert settings.cloudflare_account_id == "0123456789abcdef0123456789abcdef"
+    assert settings.cloudflare_api_token == "secret"
+    assert settings.cloudflare_ai_model == "@cf/google/gemma-4-26b-a4b-it"
     assert settings.ai_remote_timeout_seconds == 9
     assert settings.ai_local_enabled is False
 
