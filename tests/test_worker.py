@@ -249,8 +249,9 @@ def test_runtime_status_and_health_details_expose_only_safe_operational_data(
 ) -> None:
     settings = replace(
         settings_for(tmp_path),
-        gemini_api_key="segredo-nao-expor",
-        gemini_model="gemini-3.8-flash",
+        cloudflare_account_id="0123456789abcdef0123456789abcdef",
+        cloudflare_api_token="segredo-nao-expor",
+        cloudflare_ai_model="@cf/google/gemma-4-26b-a4b-it",
     )
     db = Database(settings.database_path)
     db.init()
@@ -261,8 +262,8 @@ def test_runtime_status_and_health_details_expose_only_safe_operational_data(
     assert status["worker"]["status"] == "running"
     assert status["queue_depth"] == 0
     assert status["ai"] == {
-        "remote_provider": "gemini",
-        "remote_model": "gemini-3.8-flash",
+        "remote_provider": "cloudflare",
+        "remote_model": "@cf/google/gemma-4-26b-a4b-it",
         "remote_configured": True,
         "local_provider": None,
         "local_enabled": False,
