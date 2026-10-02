@@ -363,6 +363,15 @@ class Database:
             str(offer_values["collected_at"]),
             field="collected_at",
         )
+        for field, label in (
+            ("expires_at", "expires_at"),
+            ("coupon_expiration", "coupon_expiration"),
+        ):
+            if offer_values[field]:
+                offer_values[field] = normalize_utc_timestamp(
+                    str(offer_values[field]),
+                    field=label,
+                )
         image_urls_json = json.dumps(offer.image_urls, ensure_ascii=False)
         tracking_metadata_json = json.dumps(offer.tracking_metadata, ensure_ascii=False, sort_keys=True)
         fingerprint_values = {
