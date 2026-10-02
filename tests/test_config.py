@@ -95,6 +95,18 @@ def test_linux_entrypoints_delegate_env_loading_to_python() -> None:
         assert "EnvironmentFile=" not in template
 
 
+def test_linux_installer_always_restricts_env_permissions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "install.sh").read_text(encoding="utf-8")
+
+    create_guard = 'if [[ ! -f "$REPO_DIR/.env" ]]; then'
+    chmod_line = 'chmod 600 "$REPO_DIR/.env"'
+
+    assert create_guard in script
+    assert chmod_line in script
+    assert script.index(chmod_line) > script.index("fi", script.index(create_guard))
+
+
 def test_systemd_installer_requires_runtime_before_enabling_services() -> None:
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "install-systemd.sh").read_text(encoding="utf-8")
