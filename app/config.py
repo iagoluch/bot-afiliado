@@ -113,9 +113,10 @@ class Settings:
     instagram_asset_allowed_hosts: tuple[str, ...] = ()
     instagram_container_api_enabled: bool = False
     instagram_facebook_login_ready: bool = False
-    ai_remote_provider: str = "gemini"
-    gemini_api_key: str | None = None
-    gemini_model: str = "gemini-3.8-flash"
+    ai_remote_provider: str = "cloudflare"
+    cloudflare_account_id: str | None = None
+    cloudflare_api_token: str | None = None
+    cloudflare_ai_model: str = "@cf/google/gemma-4-26b-a4b-it"
     ai_remote_timeout_seconds: int = 12
     ai_local_enabled: bool = False
     granite_cli_path: str | None = None
@@ -177,9 +178,14 @@ class Settings:
             ),
             instagram_container_api_enabled=_bool_env("INSTAGRAM_REEL_CONTAINER_API_ENABLED", False),
             instagram_facebook_login_ready=_bool_env("INSTAGRAM_FACEBOOK_LOGIN_READY", False),
-            ai_remote_provider=os.getenv("AI_REMOTE_PROVIDER", "gemini").strip().lower() or "gemini",
-            gemini_api_key=(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip() or None,
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip(),
+            ai_remote_provider=os.getenv("AI_REMOTE_PROVIDER", "cloudflare").strip().lower() or "cloudflare",
+            cloudflare_account_id=os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip() or None,
+            cloudflare_api_token=(
+                os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_AUTH_TOKEN") or ""
+            ).strip() or None,
+            cloudflare_ai_model=os.getenv(
+                "CLOUDFLARE_AI_MODEL", "@cf/google/gemma-4-26b-a4b-it"
+            ).strip(),
             ai_remote_timeout_seconds=_int_env("AI_REMOTE_TIMEOUT_SECONDS", 12),
             ai_local_enabled=_bool_env("AI_LOCAL_ENABLED", False),
             granite_cli_path=os.getenv("GRANITE_CLI_PATH") or None,
@@ -188,10 +194,16 @@ class Settings:
             ai_circuit_failures=_int_env("AI_CIRCUIT_FAILURES", 2),
             ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
         )
-        if settings.ai_remote_provider not in {"gemini", "none"}:
-            raise ValueError("AI_REMOTE_PROVIDER deve ser gemini ou none")
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", settings.gemini_model):
-            raise ValueError("GEMINI_MODEL invalido")
+        if settings.ai_remote_provider not in {"cloudflare", "none"}:
+            raise ValueError("AI_REMOTE_PROVIDER deve ser cloudflare ou none")
+        if settings.cloudflare_account_id and not re.fullmatch(
+            r"[A-Fa-f0-9]{32}", settings.cloudflare_account_id
+        ):
+            raise ValueError("CLOUDFLARE_ACCOUNT_ID invalido")
+        if not re.fullmatch(
+            r"@cf/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", settings.cloudflare_ai_model
+        ):
+            raise ValueError("CLOUDFLARE_AI_MODEL invalido")
         if settings.ai_local_enabled and not (settings.granite_cli_path and settings.granite_model_path):
             raise ValueError("AI_LOCAL_ENABLED exige GRANITE_CLI_PATH e GRANITE_MODEL_PATH")
         if settings.web_bind_port > 65535:
