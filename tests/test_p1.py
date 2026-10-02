@@ -188,6 +188,42 @@ def test_renderer_wraps_long_text_without_clipping_and_removes_scene_debug(
         assert comparison.size == (2160, 1992)
 
 
+def test_video_plan_adds_zoom_text_entry_and_scene_fades(tmp_path: Path) -> None:
+    generator = CreativeGenerator(tmp_path / "creatives", image_loader=fake_product)
+    product = fake_product("unused")
+    script = (
+        {"start": 0, "end": 2, "role": "hook", "text": "Conheça o produto"},
+        {"start": 2, "end": 4, "role": "price", "text": "Por R$ 119,90"},
+    )
+    output = tmp_path / "creatives" / "animation-test"
+    output.mkdir(parents=True)
+
+    paths, durations, root = generator._animated_video_plan(
+        output=output,
+        prefix="reel",
+        title="Fone Bluetooth Exemplo",
+        product=product,
+        script=script,
+        duration_scale=1.0,
+    )
+
+    assert len(paths) == 15  # 6 keyframes por cena + 3 frames de fade
+    assert len(paths) == len(durations)
+    assert sum(durations) == pytest.approx(4.0)
+    assert any(path.name.startswith("fade-01-") for path in paths)
+    assert all(path.exists() for path in paths)
+
+    first = Image.open(paths[0]).convert("RGB")
+    last_body = Image.open(paths[5]).convert("RGB")
+    try:
+        assert first.tobytes() != last_body.tobytes()
+    finally:
+        first.close()
+        last_body.close()
+
+    shutil.rmtree(root)
+
+
 def test_local_hook_enters_video_package_without_changing_facts_and_is_reused(tmp_path: Path) -> None:
     class Provider:
         calls = 0
