@@ -424,6 +424,8 @@ def test_category_cooldown_prevents_channel_domination(tmp_path: Path) -> None:
     db.init()
     first = insert_offer(db)
     second = insert_second_offer(db)
+    with db.connect() as connection:
+        connection.execute("UPDATE offers SET category='eletronicos' WHERE id=?", (second,))
     pipeline = Pipeline(db, settings, telegram=SuccessTelegram())
     assert pipeline.curate_and_queue([first], "campaign-a")
     assert pipeline.process_one()["status"] == "PUBLISHED"
@@ -436,6 +438,8 @@ def test_failed_retry_queue_keeps_category_in_cooldown(tmp_path: Path) -> None:
     db.init()
     first = insert_offer(db)
     second = insert_second_offer(db)
+    with db.connect() as connection:
+        connection.execute("UPDATE offers SET category='eletronicos' WHERE id=?", (second,))
     body = telegram_message(
         verified_offer_data(db, first),
         telegram_tracking_url(settings.public_base_url, first, "retrying"),
