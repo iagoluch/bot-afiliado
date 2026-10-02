@@ -86,49 +86,179 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.I
     return ImageFont.load_default()
 
 
-def _fit_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, width: int, max_lines: int = 3) -> list[str]:
-    words = text.split()
+def _text_size(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.ImageFont,
+) -> tuple[int, int]:
+    box = draw.textbbox((0, 0), text, font=font)
+    return max(0, box[2] - box[0]), max(0, box[3] - box[1])
+
+
+def _wrap_lines(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.ImageFont,
+    width: int,
+) -> list[str]:
+    """Quebra o texto integralmente sem permitir linhas fora do canvas."""
+    words = str(text).split()
+    if not words:
+        return []
+
     lines: list[str] = []
     current = ""
     for word in words:
         candidate = f"{current} {word}".strip()
-        if not current or draw.textbbox((0, 0), candidate, font=font)[2] <= width:
+        if _text_size(draw, candidate, font)[0] <= width:
             current = candidate
-        else:
+            continue
+
+        if current:
             lines.append(current)
+            current = ""
+
+        if _text_size(draw, word, font)[0] <= width:
             current = word
-            if len(lines) == max_lines - 1:
-                break
-    if current and len(lines) < max_lines:
-        remaining = " ".join(words[sum(len(line.split()) for line in lines):])
-        while remaining and draw.textbbox((0, 0), remaining, font=font)[2] > width:
-            remaining = remaining[:-1]
-        if remaining != " ".join(words[sum(len(line.split()) for line in lines):]):
-            remaining = remaining.rstrip() + "…"
-        lines.append(remaining)
+            continue
+
+        chunk = ""
+        for char in word:
+            candidate = chunk + char
+            if chunk and _text_size(draw, candidate, font)[0] > width:
+                lines.append(chunk)
+                chunk = char
+            else:
+                chunk = candidate
+        current = chunk
+
+    if current:
+        lines.append(current)
     return lines
 
 
-def _draw_centered_lines(draw: ImageDraw.ImageDraw, lines: list[str], y: int, font: ImageFont.ImageFont, fill: str, canvas_width: int, spacing: int = 14) -> int:
+def _block_height(
+    draw: ImageDraw.ImageDraw,
+    lines: list[str],
+    font: ImageFont.ImageFont,
+    spacing: int,
+) -> int:
+    if not lines:
+        return 0
+    return sum(_text_size(draw, line, font)[1] for line in lines) + spacing * max(0, len(lines) - 1)
+
+
+def _fit_text_block(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    max_width: int,
+    max_height: int,
+    start_size: int,
+    min_size: int,
+    bold: bool = False,
+    max_lines: int | None = None,
+    spacing: int = 14,
+) -> tuple[ImageFont.ImageFont, list[str]]:
+    """Faz wrapping e reduz a fonte até todo o texto caber no bloco."""
+    floor = max(18, min_size)
+    for size in range(max(start_size, floor), floor - 1, -2):
+        font = _font(size, bold=bold)
+        lines = _wrap_lines(draw, text, font, max_width)
+        if max_lines is not None and len(lines) > max_lines:
+            continue
+        if _block_height(draw, lines, font, spacing) <= max_height:
+            return font, lines
+
+    # Nunca troca clipping por reticências: em conteúdo publicável o texto
+    # precisa permanecer completo, mesmo se isso exigir fonte menor.
+    for size in range(floor - 2, 17, -2):
+        font = _font(size, bold=bold)
+        lines = _wrap_lines(draw, text, font, max_width)
+        if _block_height(draw, lines, font, spacing) <= max_height:
+            return font, lines
+
+    font = _font(18, bold=bold)
+    return font, _wrap_lines(draw, text, font, max_width)
+
+
+def _draw_centered_lines(
+    draw: ImageDraw.ImageDraw,
+    lines: list[str],
+    y: int,
+    font: ImageFont.ImageFont,
+    fill: str,
+    canvas_width: int,
+    spacing: int = 14,
+) -> int:
     for line in lines:
         box = draw.textbbox((0, 0), line, font=font)
-        x = (canvas_width - (box[2] - box[0])) // 2
-        draw.text((x, y), line, font=font, fill=fill)
-        y += box[3] - box[1] + spacing
+        line_width = box[2] - box[0]
+        line_height = box[3] - box[1]
+        x = (canvas_width - line_width) // 2 - box[0]
+        draw.text((x, y - box[1]), line, font=font, fill=fill)
+        y += line_height + spacing
     return y
 
 
-def _product_panel(canvas: Image.Image, product: Image.Image | None, box: tuple[int, int, int, int]) -> None:
+def _palette(variant: str) -> dict[str, str]:
+    if variant == "b":
+        return {
+            "background": "#f8fafc",
+            "accent": "#0f766e",
+            "disclosure": "#0f766e",
+            "title": "#0f172a",
+            "primary": "#047857",
+            "secondary": "#475569",
+            "panel": "#e2e8f0",
+            "panel_text": "#64748b",
+        }
+    return {
+        "background": "#0f172a",
+        "accent": "#22c55e",
+        "disclosure": "#86efac",
+        "title": "#f8fafc",
+        "primary": "#4ade80",
+        "secondary": "#cbd5e1",
+        "panel": "#f8fafc",
+        "panel_text": "#64748b",
+    }
+
+
+def _product_panel(
+    canvas: Image.Image,
+    product: Image.Image | None,
+    box: tuple[int, int, int, int],
+    *,
+    variant: str = "a",
+) -> None:
     x1, y1, x2, y2 = box
     draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle(box, radius=36, fill="#ffffff")
+    colors = _palette(variant)
+    draw.rounded_rectangle(box, radius=34, fill=colors["panel"])
     if product is None:
-        label = "IMAGEM DO PRODUTO\nNAO DISPONIVEL"
-        font = _font(42, bold=True)
-        bounds = draw.multiline_textbbox((0, 0), label, font=font, align="center", spacing=12)
-        draw.multiline_text(((x1 + x2 - bounds[2]) // 2, (y1 + y2 - bounds[3]) // 2), label, font=font, fill="#64748b", align="center", spacing=12)
+        label = "Produto sem imagem"
+        note = "Prévia de desenvolvimento"
+        label_font = _font(34, bold=True)
+        note_font = _font(25)
+        label_box = draw.textbbox((0, 0), label, font=label_font)
+        note_box = draw.textbbox((0, 0), note, font=note_font)
+        center_y = (y1 + y2) // 2
+        draw.text(
+            ((x1 + x2 - (label_box[2] - label_box[0])) // 2, center_y - 34),
+            label,
+            font=label_font,
+            fill=colors["panel_text"],
+        )
+        draw.text(
+            ((x1 + x2 - (note_box[2] - note_box[0])) // 2, center_y + 18),
+            note,
+            font=note_font,
+            fill=colors["panel_text"],
+        )
         return
-    inner = (x2 - x1 - 80, y2 - y1 - 80)
+
+    inner = (max(80, x2 - x1 - 80), max(80, y2 - y1 - 80))
     fitted = ImageOps.contain(product, inner, method=Image.Resampling.LANCZOS)
     canvas.paste(fitted, (x1 + (x2 - x1 - fitted.width) // 2, y1 + (y2 - y1 - fitted.height) // 2))
 
@@ -141,28 +271,106 @@ def _card(
     secondary: str,
     product: Image.Image | None = None,
     disclosure: str = "PUBLICIDADE",
+    role: str = "generic",
+    variant: str = "a",
 ) -> Image.Image:
     width, height = size
-    canvas = Image.new("RGB", size, "#0f172a")
+    vertical = height > width
+    colors = _palette(variant)
+    canvas = Image.new("RGB", size, colors["background"])
     draw = ImageDraw.Draw(canvas)
-    accent_height = max(16, height // 80)
-    draw.rectangle((0, 0, width, accent_height), fill="#22c55e")
-    draw.text((width * 0.06, height * 0.035), disclosure, font=_font(max(20, width // 38), bold=True), fill="#86efac")
 
-    panel_top = int(height * 0.10)
-    panel_bottom = int(height * (0.55 if height > width else 0.58))
-    _product_panel(canvas, product, (int(width * 0.08), panel_top, int(width * 0.92), panel_bottom))
+    accent_height = max(14, height // 90)
+    draw.rectangle((0, 0, width, accent_height), fill=colors["accent"])
+    disclosure_font = _font(max(22, width // 38), bold=True)
+    draw.text((int(width * 0.055), int(height * 0.032)), disclosure, font=disclosure_font, fill=colors["disclosure"])
 
-    y = panel_bottom + int(height * 0.035)
-    title_font = _font(max(34, width // 20), bold=True)
-    y = _draw_centered_lines(draw, _fit_lines(draw, title, title_font, int(width * 0.84), 3), y, title_font, "#f8fafc", width)
-    primary_font = _font(max(42, width // 14), bold=True)
-    y += int(height * 0.018)
-    y = _draw_centered_lines(draw, [primary], y, primary_font, "#4ade80", width)
-    secondary_font = _font(max(24, width // 28))
-    y += int(height * 0.012)
-    _draw_centered_lines(draw, _fit_lines(draw, secondary, secondary_font, int(width * 0.84), 2), y, secondary_font, "#cbd5e1", width)
+    safe_x = int(width * 0.09)
+    text_width = width - safe_x * 2
+
+    if vertical:
+        # Mantém conteúdo principal longe das áreas de controles das plataformas.
+        panel_top = int(height * 0.105)
+        panel_bottom = int(height * (0.43 if product is not None else 0.33))
+        text_top = panel_bottom + int(height * 0.035)
+        text_bottom = int(height * 0.80)
+    else:
+        panel_top = int(height * 0.11)
+        panel_bottom = int(height * (0.56 if product is not None else 0.44))
+        text_top = panel_bottom + int(height * 0.035)
+        text_bottom = int(height * 0.94)
+
+    _product_panel(
+        canvas,
+        product,
+        (safe_x, panel_top, width - safe_x, panel_bottom),
+        variant=variant,
+    )
+
+    available = max(120, text_bottom - text_top)
+    title_ratio = 0.24 if role not in {"hook", "cta"} else 0.18
+    primary_ratio = 0.48 if role in {"hook", "product", "benefit", "cta"} else 0.42
+    secondary_ratio = max(0.16, 1.0 - title_ratio - primary_ratio)
+
+    y = text_top
+    title_font, title_lines = _fit_text_block(
+        draw,
+        title,
+        max_width=text_width,
+        max_height=int(available * title_ratio),
+        start_size=54 if vertical else 52,
+        min_size=30,
+        bold=True,
+        max_lines=2,
+        spacing=10,
+    )
+    y = _draw_centered_lines(draw, title_lines, y, title_font, colors["title"], width, spacing=10)
+
+    y += int(height * 0.014)
+    primary_start = 96 if role == "price" else (82 if role in {"hook", "benefit", "cta"} else 74)
+    primary_font, primary_lines = _fit_text_block(
+        draw,
+        primary,
+        max_width=text_width,
+        max_height=int(available * primary_ratio),
+        start_size=primary_start,
+        min_size=34,
+        bold=True,
+        max_lines=4,
+        spacing=12,
+    )
+    y = _draw_centered_lines(draw, primary_lines, y, primary_font, colors["primary"], width, spacing=12)
+
+    if secondary.strip():
+        y += int(height * 0.010)
+        secondary_font, secondary_lines = _fit_text_block(
+            draw,
+            secondary,
+            max_width=text_width,
+            max_height=int(available * secondary_ratio),
+            start_size=38 if vertical else 36,
+            min_size=24,
+            max_lines=3,
+            spacing=8,
+        )
+        _draw_centered_lines(draw, secondary_lines, y, secondary_font, colors["secondary"], width, spacing=8)
+
     return canvas
+
+
+def _comparison_sheet(left: Image.Image, right: Image.Image, label: str) -> Image.Image:
+    """Prévia A/B para revisão humana; nunca é usada como asset de publicação."""
+    header = 72
+    width = left.width + right.width
+    height = max(left.height, right.height) + header
+    sheet = Image.new("RGB", (width, height), "#111827")
+    draw = ImageDraw.Draw(sheet)
+    font = _font(30, bold=True)
+    draw.text((28, 20), f"{label} · A", font=font, fill="#f8fafc")
+    draw.text((left.width + 28, 20), f"{label} · B", font=font, fill="#f8fafc")
+    sheet.paste(left, (0, header))
+    sheet.paste(right, (left.width, header))
+    return sheet
 
 
 @dataclass(frozen=True, slots=True)
