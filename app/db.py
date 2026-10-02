@@ -1063,51 +1063,63 @@ class Database:
             )
             return int(cursor.lastrowid)
 
-    def import_conversion(self, data: dict[str, Any]) -> None:
+    def _import_conversion(self, connection: sqlite3.Connection, data: dict[str, Any]) -> None:
         normalized = dict(data)
         normalized["external_order_id"] = str(normalized.get("external_order_id") or "").strip()
         if not normalized["external_order_id"]:
             raise ValueError("ID externo do pedido e obrigatorio")
         if normalized.get("offer_id") is not None:
             normalized["offer_id"] = int(normalized["offer_id"])
-        with self.connect() as connection:
-            if normalized.get("click_id"):
-                click = connection.execute(
-                    "SELECT offer_id,channel,campaign_id FROM clicks WHERE click_id=?",
-                    (normalized["click_id"],),
-                ).fetchone()
-                if click is None:
-                    raise ValueError("clique da conversao nao encontrado")
-                if normalized.get("offer_id") is not None and normalized["offer_id"] != click["offer_id"]:
-                    raise ValueError("oferta da conversao difere da oferta do clique")
-                normalized["offer_id"] = click["offer_id"]
-                for field, click_field, label in (
-                    ("channel", "channel", "canal"),
-                    ("campaign", "campaign_id", "campanha"),
-                ):
-                    if normalized.get(field) and normalized[field] != click[click_field]:
-                        raise ValueError(f"{label} da conversao difere do clique")
-                    normalized[field] = click[click_field]
 
-            existing = connection.execute(
-                """SELECT offer_id,click_id,channel,campaign
-                   FROM conversions
-                   WHERE network=? AND external_order_id=?""",
-                (normalized.get("network"), normalized["external_order_id"]),
+        if normalized.get("click_id"):
+            click = connection.execute(
+                "SELECT offer_id,channel,campaign_id FROM clicks WHERE click_id=?",
+                (normalized["click_id"],),
             ).fetchone()
-            if existing is not None:
-                for field in ("offer_id", "click_id", "channel", "campaign"):
-                    incoming = normalized.get(field)
-                    if incoming not in (None, "") and incoming != existing[field]:
-                        raise ValueError(
-                            f"atribuicao da conversao difere da importacao original: {field}"
-                        )
-                    normalized[field] = existing[field]
+            if click is None:
+                raise ValueError("clique da conversao nao encontrado")
+            if normalized.get("offer_id") is not None and normalized["offer_id"] != click["offer_id"]:
+                raise ValueError("oferta da conversao difere da oferta do clique")
+            normalized["offer_id"] = click["offer_id"]
+            for field, click_field, label in (
+                ("channel", "channel", "canal"),
+                ("campaign", "campaign_id", "campanha"),
+            ):
+                if normalized.get(field) and normalized[field] != click[click_field]:
+                    raise ValueError(f"{label} da conversao difere do clique")
+                normalized[field] = click[click_field]
 
-            connection.execute(
-                "INSERT INTO conversions(external_order_id,offer_id,click_id,merchant,network,value_cents,commission_cents,status,channel,campaign,timestamp) VALUES(:external_order_id,:offer_id,:click_id,:merchant,:network,:value_cents,:commission_cents,:status,:channel,:campaign,:timestamp) ON CONFLICT(network,external_order_id) DO UPDATE SET value_cents=excluded.value_cents,commission_cents=excluded.commission_cents,status=excluded.status,timestamp=excluded.timestamp",
-                normalized,
-            )
+        existing = connection.execute(
+            """SELECT offer_id,click_id,channel,campaign
+               FROM conversions
+               WHERE network=? AND external_order_id=?""",
+            (normalized.get("network"), normalized["external_order_id"]),
+        ).fetchone()
+        if existing is not None:
+            for field in ("offer_id", "click_id", "channel", "campaign"):
+                incoming = normalized.get(field)
+                if incoming not in (None, "") and incoming != existing[field]:
+                    raise ValueError(
+                        f"atribuicao da conversao difere da importacao original: {field}"
+                    )
+                normalized[field] = existing[field]
+
+        connection.execute(
+            "INSERT INTO conversions(external_order_id,offer_id,click_id,merchant,network,value_cents,commission_cents,status,channel,campaign,timestamp) VALUES(:external_order_id,:offer_id,:click_id,:merchant,:network,:value_cents,:commission_cents,:status,:channel,:campaign,:timestamp) ON CONFLICT(network,external_order_id) DO UPDATE SET value_cents=excluded.value_cents,commission_cents=excluded.commission_cents,status=excluded.status,timestamp=excluded.timestamp",
+            normalized,
+        )
+
+    def import_conversion(self, data: dict[str, Any]) -> None:
+        with self.connect() as connection:
+            self._import_conversion(connection, data)
+
+    def import_conversions(self, rows: Iterable[dict[str, Any]]) -> int:
+        imported = 0
+        with self.connect() as connection:
+            for row in rows:
+                self._import_conversion(connection, row)
+                imported += 1
+        return imported
 
     def overview(self) -> dict[str, Any]:
         with self.connect() as connection:
