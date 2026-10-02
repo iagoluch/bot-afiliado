@@ -16,7 +16,7 @@ O P3 adiciona painel administrativo, autenticação Basic fail closed quando exp
 
 ## Notebook Acer com Lubuntu
 
-O alvo local é um i3-6100U com 4 GB de RAM, HDD e sem GPU. O bot não depende mais de Qwen/Ollama: sem IA configurada ele usa templates determinísticos. Quando `GEMINI_API_KEY` estiver presente, Gemini é o provider remoto principal; Granite GGUF via llama.cpp existe apenas como fallback local experimental e permanece desligado por padrão (`AI_LOCAL_ENABLED=false`) até ser homologado nesse hardware. Nenhum provider pode controlar preços, descontos, estoque, URLs, tracking, compliance ou publicação.
+O alvo local é um i3-6100U com 4 GB de RAM, HDD e sem GPU. O bot não depende mais de Qwen/Ollama: sem IA configurada ele usa templates determinísticos. Quando `CLOUDFLARE_ACCOUNT_ID` e `CLOUDFLARE_API_TOKEN` estiverem presentes, Cloudflare Workers AI com Gemma 4 26B A4B é o provider remoto principal; Granite GGUF via llama.cpp existe apenas como fallback local experimental e permanece desligado por padrão (`AI_LOCAL_ENABLED=false`) até ser homologado nesse hardware. Nenhum provider pode controlar preços, descontos, estoque, URLs, tracking, compliance ou publicação.
 
 No notebook, após autenticar o Git para acessar o repositório:
 
