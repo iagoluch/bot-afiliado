@@ -12,6 +12,21 @@ class ComplianceError(ValueError):
     pass
 
 
+def _canonical_integer(value: object, label: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} invalido")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"{label} invalido")
+        return int(value)
+    raw = str(value).strip()
+    if not raw or not raw.lstrip("-").isdigit():
+        raise ValueError(f"{label} invalido")
+    return int(raw)
+
+
 DEFAULT_MERCHANT_RULES = {
     "shopee": {"require_public": True, "blocked_channels": ()},
     "mercado livre": {"require_public": True, "blocked_channels": ("private_group", "paid_search", "offline")},
@@ -114,17 +129,21 @@ def validate_offer(offer: dict) -> None:
             errors.append(f"{field} precisa ser URL HTTPS")
 
     try:
-        current = int(offer.get("current_price_cents") or 0)
-    except (TypeError, ValueError):
+        current = _canonical_integer(
+            offer.get("current_price_cents") or 0,
+            "preco atual",
+        )
+    except ValueError:
         current = 0
-    if current <= 0:
+        errors.append("preco atual invalido")
+    if current <= 0 and "preco atual invalido" not in errors:
         errors.append("preco atual precisa ser positivo")
 
     original = offer.get("original_price_cents")
     if original is not None:
         try:
-            original_value = int(original)
-        except (TypeError, ValueError):
+            original_value = _canonical_integer(original, "preco anterior")
+        except ValueError:
             errors.append("preco anterior invalido")
         else:
             if original_value <= 0:
@@ -138,11 +157,24 @@ def validate_offer(offer: dict) -> None:
     elif stock_status == "OUT_OF_STOCK":
         errors.append("produto indisponivel")
 
+    for field, label in (
+        ("sales_count", "sales_count"),
+        ("commission_estimate_cents", "commission_estimate_cents"),
+    ):
+        value = offer.get(field)
+        if value is None:
+            continue
+        try:
+            integer = _canonical_integer(value, label)
+        except ValueError:
+            errors.append(f"{label} invalido")
+            continue
+        if integer < 0:
+            errors.append(f"{label} fora do intervalo permitido")
+
     numeric_ranges = (
         ("rating", 0.0, 5.0, "rating"),
-        ("sales_count", 0.0, None, "sales_count"),
         ("commission_rate", 0.0, 100.0, "commission_rate"),
-        ("commission_estimate_cents", 0.0, None, "commission_estimate_cents"),
         ("discount_percent", 0.0, 100.0, "discount_percent"),
     )
     for field, minimum, maximum, label in numeric_ranges:
