@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import csv
-import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from app.adapters.base import AffiliateAdapter, Capability, CapabilityStatus
+from app.adapters.local_files import read_local_records
 from app.models import Offer, expires_after, money_to_cents, utc_now
 
 
@@ -32,15 +31,7 @@ class ShopeeManualAdapter(AffiliateAdapter):
     }
 
     def import_offers(self, path: Path) -> list[Offer]:
-        suffix = path.suffix.lower()
-        if suffix == ".csv":
-            with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                records = list(csv.DictReader(handle))
-        elif suffix == ".json":
-            data = json.loads(path.read_text(encoding="utf-8"))
-            records = data if isinstance(data, list) else data.get("offers", [])
-        else:
-            raise ValueError("formato aceito: .csv ou .json")
+        records = read_local_records(path, label="Shopee")
         if not records:
             raise ValueError("arquivo nao contem ofertas")
         return [self._normalize(record) for record in records]
