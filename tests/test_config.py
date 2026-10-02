@@ -95,6 +95,21 @@ def test_linux_entrypoints_delegate_env_loading_to_python() -> None:
         assert "EnvironmentFile=" not in template
 
 
+def test_systemd_installer_requires_runtime_before_enabling_services() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "install-systemd.sh").read_text(encoding="utf-8")
+
+    venv_check = '[[ ! -x "$REPO_DIR/.venv/bin/python" ]]'
+    env_check = '[[ ! -f "$REPO_DIR/.env" ]]'
+    enable_command = "systemctl enable --now"
+
+    assert venv_check in script
+    assert env_check in script
+    assert enable_command in script
+    assert script.index(venv_check) < script.index(enable_command)
+    assert script.index(env_check) < script.index(enable_command)
+
+
 def test_web_entrypoint_uses_host_and_port_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict] = []
     monkeypatch.setenv("WEB_HOST", "127.0.0.9")
