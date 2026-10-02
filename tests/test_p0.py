@@ -212,6 +212,35 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
     assert db.rows("SELECT id FROM publish_queue") == []
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    (
+        ({"stock_status": "OUT_STOCK"}, "status de estoque invalido"),
+        ({"rating": 5.1}, "rating"),
+        ({"sales_count": -1}, "sales_count"),
+        ({"commission_rate": 101}, "commission_rate"),
+        ({"discount_percent": -1}, "discount_percent"),
+        ({"merchant": ""}, "merchant ausente"),
+        ({"affiliate_network": ""}, "affiliate_network ausente"),
+        ({"external_product_id": ""}, "external_product_id ausente"),
+    ),
+)
+def test_offer_domain_rejects_invalid_canonical_values(changes: dict, message: str) -> None:
+    offer = {
+        "merchant": "Shopee",
+        "affiliate_network": "Shopee Afiliados",
+        "external_product_id": "sku-domain",
+        "title": "Produto",
+        "source_url": "https://shopee.com.br/product/1/sku-domain",
+        "affiliate_url": "https://s.shopee.com.br/domain",
+        "current_price_cents": 10000,
+        "stock_status": "IN_STOCK",
+    }
+
+    with pytest.raises(ComplianceError, match=message):
+        validate_offer({**offer, **changes})
+
+
 def test_compliance_blocks_out_of_stock() -> None:
     with pytest.raises(ComplianceError, match="indisponivel"):
         validate_offer({
