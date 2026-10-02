@@ -19,7 +19,7 @@ from app.adapters.base import Capability, CapabilityStatus
 from app.adapters.shopee_manual import ShopeeManualAdapter
 from app.config import Settings
 from app.db import Database
-from app.models import Offer, utc_now
+from app.models import Offer, money_to_cents, utc_now
 from app.scheduler import due_slot, run_due, run_tick
 from app.services.compliance import ComplianceError, validate_content, validate_offer
 from app.services.content import telegram_message, telegram_tracking_url
@@ -257,10 +257,18 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
         ({"sales_count": -1}, "sales_count"),
         ({"commission_rate": 101}, "commission_rate"),
         ({"discount_percent": -1}, "discount_percent"),
+        ({"rating": "nan"}, "rating invalido"),
+        ({"commission_rate": "inf"}, "commission_rate invalido"),
         ({"merchant": ""}, "merchant ausente"),
         ({"affiliate_network": ""}, "affiliate_network ausente"),
     ),
 )
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_money_parser_rejects_non_finite_values(value: str) -> None:
+    with pytest.raises(ValueError, match="valor monetario invalido"):
+        money_to_cents(value)
+
+
 def test_offer_domain_rejects_invalid_canonical_values(changes: dict, message: str) -> None:
     offer = {
         "merchant": "Shopee",
