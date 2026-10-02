@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from app.config import PROJECT_ENV_FILE, Settings, load_project_env
+from app.config import PROJECT_ENV_FILE, Settings, load_project_env, validate_public_base_url
 from app.web_server import main as web_main
 
 
@@ -74,6 +74,25 @@ def test_settings_reads_ai_configuration(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert settings.cloudflare_ai_model == "@cf/google/gemma-4-26b-a4b-it"
     assert settings.ai_remote_timeout_seconds == 9
     assert settings.ai_local_enabled is False
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    (
+        ("http://offers.example", "HTTPS"),
+        ("https://127.0.0.1", "publicamente acessivel"),
+        ("https://localhost", "publicamente acessivel"),
+        ("https://offers.example/path", "caminho"),
+        ("https://offers.example?token=x", "query"),
+        ("https://user:pass@offers.example", "credenciais"),
+    ),
+)
+def test_real_runtime_rejects_unsafe_public_base_urls(url: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_public_base_url(url, dry_run=False)
+
+    assert validate_public_base_url("https://offers.example/", dry_run=False) == "https://offers.example"
+    assert validate_public_base_url("http://127.0.0.1:8000/", dry_run=True) == "http://127.0.0.1:8000"
 
 
 def test_local_ai_requires_explicit_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
