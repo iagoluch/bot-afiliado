@@ -12,6 +12,9 @@ from typing import Any, Iterable, Iterator
 from app.models import Offer, utc_now
 
 
+MAX_CONTENT_JOB_ATTEMPTS = 5
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -937,9 +940,10 @@ class Database:
             row = connection.execute(
                 """SELECT j.*,o.content_fingerprint AS current_fingerprint
                    FROM content_jobs j JOIN offers o ON o.id=j.offer_id
-                   WHERE j.dry_run=? AND j.status IN ('PENDING','FAILED') AND j.available_at<=?
+                   WHERE j.dry_run=? AND j.status IN ('PENDING','FAILED')
+                     AND j.available_at<=? AND j.attempts<?
                    ORDER BY j.id LIMIT 1""",
-                (int(dry_run), now),
+                (int(dry_run), now, MAX_CONTENT_JOB_ATTEMPTS),
             ).fetchone()
             if row is None:
                 return None
