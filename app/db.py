@@ -762,7 +762,7 @@ class Database:
                     """INSERT INTO instagram_publications(
                            social_queue_id,media_type,asset_url,container_id,status,
                            reconciliation_note,reconciled_at,created_at,updated_at
-                       ) VALUES(?,'REELS',?,?,'CONTAINER_CREATED',?,?,?,?,?)""",
+                       ) VALUES(?,'REELS',?,?,'CONTAINER_CREATED',?,?,?,?)""",
                     (
                         queue_id,
                         attempt["asset_url"],
