@@ -22,14 +22,20 @@ def scheduler_now() -> datetime:
     return datetime.now(SCHEDULER_TIMEZONE)
 
 
-def due_slot(now: datetime, slots: tuple[str, ...] = DEFAULT_SLOTS, tolerance_minutes: int = 5) -> str | None:
+def due_slot(now: datetime, slots: tuple[str, ...] = DEFAULT_SLOTS) -> str | None:
+    """Return the latest slot already due on the current local date.
+
+    The database claim keeps each slot idempotent. Choosing only the latest
+    elapsed slot lets a restarted/suspended worker catch up once without
+    replaying every older missed window.
+    """
+    latest: str | None = None
     for slot in slots:
         hour, minute = (int(part) for part in slot.split(":"))
         scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        delta_minutes = (now - scheduled).total_seconds() / 60
-        if 0 <= delta_minutes < tolerance_minutes:
-            return f"{now.date().isoformat()}T{slot}"
-    return None
+        if scheduled <= now:
+            latest = slot
+    return f"{now.date().isoformat()}T{latest}" if latest else None
 
 
 def run_due(db: Database, pipeline: Pipeline, source: Path, now: datetime) -> dict | None:
