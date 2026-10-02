@@ -8,6 +8,8 @@ Type=simple
 User=@RUN_USER@
 WorkingDirectory=@REPO_DIR@
 Environment=PYTHONUNBUFFERED=1
+UMask=0077
+NoNewPrivileges=true
 ExecStart=@REPO_DIR@/.venv/bin/python -m app.web_server
 Restart=on-failure
 RestartSec=10
