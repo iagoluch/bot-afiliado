@@ -391,6 +391,7 @@ class CreativeAssets:
     tiktok_frames: tuple[Path, ...]
     tiktok_thumbnail: Path
     tiktok_video: VideoResult
+    ab_previews: tuple[Path, ...]
 
 
 class CreativeGenerator:
@@ -419,7 +420,7 @@ class CreativeGenerator:
 
     def _output_dir(self, offer: dict[str, Any], campaign_id: str) -> Path:
         fingerprint = hashlib.sha256(
-            f"{offer['id']}:{offer['current_price_cents']}:{offer.get('coupon') or ''}:{campaign_id}:v1".encode()
+            f"{offer['id']}:{offer['current_price_cents']}:{offer.get('coupon') or ''}:{campaign_id}:v2".encode()
         ).hexdigest()[:12]
         output = self.root / f"{offer_slug(offer)}-{fingerprint}"
         output.mkdir(parents=True, exist_ok=True)
@@ -466,26 +467,164 @@ class CreativeGenerator:
         verified = verified_discount(offer)
         discount = f"{verified[1]:.0f}% OFF comprovado" if verified else "Oferta selecionada"
 
-        feed = (
-            self._save(_card((1080, 1080), title=title, primary=price, secondary="Preco informado na ultima atualizacao", product=product), output / "instagram-feed-1.png"),
-            self._save(_card((1080, 1080), title=title, primary=discount, secondary=str(offer.get("shipping") or offer.get("category") or "Confira os detalhes"), product=product), output / "instagram-feed-2.png"),
-            self._save(_card((1080, 1080), title=title, primary=coupon, secondary="Confira preco e disponibilidade no link", product=product), output / "instagram-feed-3.png"),
+        feed_cards = (
+            dict(primary=price, secondary="Preço informado na última atualização", role="price"),
+            dict(primary=discount, secondary=str(offer.get("shipping") or offer.get("category") or "Confira os detalhes"), role="benefit"),
+            dict(primary=coupon, secondary="Confira preço e disponibilidade no link", role="benefit"),
         )
-        story = self._save(_card((1080, 1920), title=title, primary=price, secondary=f"{coupon}. Confira no link.", product=product), output / "instagram-story.png")
+        feed = tuple(
+            self._save(
+                _card(
+                    (1080, 1080),
+                    title=title,
+                    primary=card["primary"],
+                    secondary=card["secondary"],
+                    product=product,
+                    role=card["role"],
+                    variant="a",
+                ),
+                output / f"instagram-feed-{index}.png",
+            )
+            for index, card in enumerate(feed_cards, start=1)
+        )
+        story = self._save(
+            _card(
+                (1080, 1920),
+                title=title,
+                primary=price,
+                secondary=f"{coupon}. Confira no link.",
+                product=product,
+                role="price",
+                variant="a",
+            ),
+            output / "instagram-story.png",
+        )
 
-        def render_frames(prefix: str, script: tuple[dict[str, Any], ...]) -> tuple[Path, ...]:
-            paths: list[Path] = []
+        def render_frames(
+            prefix: str,
+            script: tuple[dict[str, Any], ...],
+            *,
+            variant: str = "a",
+            save: bool = True,
+        ) -> tuple[Path, ...] | tuple[Image.Image, ...]:
+            rendered: list[Path] | list[Image.Image] = []
             for index, scene in enumerate(script, start=1):
-                image = _card((1080, 1920), title=title, primary=str(scene["text"]), secondary=f"Cena {index}/{len(script)}", product=product)
-                paths.append(self._save(image, output / f"{prefix}-frame-{index}.png"))
-            return tuple(paths)
+                role = str(scene.get("role") or "generic")
+                secondary = ""
+                if role == "price":
+                    secondary = "Preço informado na última atualização"
+                elif role == "benefit":
+                    secondary = "Confira as condições atuais"
+                elif role == "cta":
+                    secondary = "Confira preço e disponibilidade no link"
+                image = _card(
+                    (1080, 1920),
+                    title=title,
+                    primary=str(scene["text"]),
+                    secondary=secondary,
+                    product=product,
+                    role=role,
+                    variant=variant,
+                )
+                if save:
+                    rendered.append(self._save(image, output / f"{prefix}-frame-{index}.png"))
+                else:
+                    rendered.append(image)
+            return tuple(rendered)
 
         reel_frames = render_frames("instagram-reel", reel_script)
         tiktok_frames = render_frames("tiktok", tiktok_script)
-        reel_thumbnail = self._save(_card((1080, 1920), title=title, primary=price, secondary="Confira as condições", product=product), output / "instagram-reel-thumbnail.png")
-        tiktok_thumbnail = self._save(_card((1080, 1920), title=title, primary=price, secondary="Rascunho para revisão", product=product), output / "tiktok-thumbnail.png")
+        assert all(isinstance(path, Path) for path in reel_frames)
+        assert all(isinstance(path, Path) for path in tiktok_frames)
+        reel_frames = tuple(reel_frames)
+        tiktok_frames = tuple(tiktok_frames)
+
+        reel_thumbnail = self._save(
+            _card(
+                (1080, 1920),
+                title=title,
+                primary=price,
+                secondary="Confira as condições",
+                product=product,
+                role="price",
+                variant="a",
+            ),
+            output / "instagram-reel-thumbnail.png",
+        )
+        tiktok_thumbnail = self._save(
+            _card(
+                (1080, 1920),
+                title=title,
+                primary=price,
+                secondary="Rascunho para revisão",
+                product=product,
+                role="price",
+                variant="a",
+            ),
+            output / "tiktok-thumbnail.png",
+        )
+
+        # A/B é somente uma comparação visual de revisão. A variante A segue como
+        # asset canônico e a variante B nunca entra automaticamente em publicação.
+        feed_b = _card(
+            (1080, 1080),
+            title=title,
+            primary=feed_cards[0]["primary"],
+            secondary=feed_cards[0]["secondary"],
+            product=product,
+            role=feed_cards[0]["role"],
+            variant="b",
+        )
+        story_b = _card(
+            (1080, 1920),
+            title=title,
+            primary=price,
+            secondary=f"{coupon}. Confira no link.",
+            product=product,
+            role="price",
+            variant="b",
+        )
+        reel_b_frames = render_frames("instagram-reel-b", reel_script[:1], variant="b", save=False)
+        tiktok_b_frames = render_frames("tiktok-b", tiktok_script[:1], variant="b", save=False)
+        reel_b = reel_b_frames[0] if reel_b_frames else _card(
+            (1080, 1920), title=title, primary=price, secondary="", product=product, role="hook", variant="b",
+        )
+        tiktok_b = tiktok_b_frames[0] if tiktok_b_frames else _card(
+            (1080, 1920), title=title, primary=price, secondary="", product=product, role="hook", variant="b",
+        )
+        assert isinstance(reel_b, Image.Image)
+        assert isinstance(tiktok_b, Image.Image)
+
+        with Image.open(feed[0]) as feed_a:
+            feed_ab = _comparison_sheet(feed_a.copy(), feed_b, "Feed")
+        with Image.open(story) as story_a:
+            story_ab = _comparison_sheet(story_a.copy(), story_b, "Story")
+        with Image.open(reel_frames[0]) as reel_a:
+            reel_ab = _comparison_sheet(reel_a.copy(), reel_b, "Reel hook")
+        with Image.open(tiktok_frames[0]) as tiktok_a:
+            tiktok_ab = _comparison_sheet(tiktok_a.copy(), tiktok_b, "TikTok hook")
+
+        ab_previews = (
+            self._save(feed_ab, output / "ab-feed.png"),
+            self._save(story_ab, output / "ab-story.png"),
+            self._save(reel_ab, output / "ab-reel-hook.png"),
+            self._save(tiktok_ab, output / "ab-tiktok-hook.png"),
+        )
+
         reel_durations = tuple(max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale) for s in reel_script)
         tiktok_durations = tuple(max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale) for s in tiktok_script)
         reel_video = self._video(reel_frames, reel_durations, output / "instagram-reel.mp4")
         tiktok_video = self._video(tiktok_frames, tiktok_durations, output / "tiktok-draft.mp4")
-        return CreativeAssets(output, feed, story, reel_frames, reel_thumbnail, reel_video, tiktok_frames, tiktok_thumbnail, tiktok_video)
+        return CreativeAssets(
+            root=output,
+            feed=feed,
+            story=story,
+            reel_frames=reel_frames,
+            reel_thumbnail=reel_thumbnail,
+            reel_video=reel_video,
+            tiktok_frames=tiktok_frames,
+            tiktok_thumbnail=tiktok_thumbnail,
+            tiktok_video=tiktok_video,
+            ab_previews=ab_previews,
+        )
+
