@@ -118,7 +118,14 @@ def validate_offer(offer: dict) -> None:
         raise ComplianceError("; ".join(errors))
 
 
-def validate_content(body: str, *, allow_http: bool = False) -> None:
+def validate_content(
+    body: str,
+    *,
+    allow_http: bool = False,
+    max_chars: int | None = None,
+) -> None:
+    if max_chars is not None and not 1 <= len(body) <= max_chars:
+        raise ComplianceError(f"conteudo excede limite de {max_chars} caracteres")
     lowered = body.lower()
     if "#publi" not in lowered and "#publicidade" not in lowered:
         raise ComplianceError("identificacao publicitaria ausente")
