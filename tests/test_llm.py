@@ -210,6 +210,23 @@ def test_granite_is_offline_bounded_and_rejects_fabricated_claims(
     assert rejected["fallback_reason"] == "SUGGESTION_REJECTED"
 
 
+def test_preview_applies_accepted_hook_to_video_script(tmp_path: Path) -> None:
+    class SafeProvider:
+        def suggest_hook(self, title: str, category: str, channel: str) -> str:
+            return "Conheça o fone sem fio"
+
+    draft = copy_preview(
+        _offer(),
+        "instagram_reel",
+        _settings(tmp_path),
+        provider=SafeProvider(),
+    )
+    assert draft["source"] == "custom"
+    assert draft["hook_suggestion"] == "Conheça o fone sem fio"
+    assert draft["script"][0]["role"] == "hook"
+    assert draft["script"][0]["text"] == "Conheça o fone sem fio"
+
+
 def test_provider_chain_prefers_cloudflare_and_only_enables_granite_explicitly(
     tmp_path: Path,
 ) -> None:
