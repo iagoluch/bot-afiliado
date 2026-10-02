@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -72,6 +74,30 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     if value < minimum:
         raise ValueError(f"{name} deve ser maior ou igual a {minimum}")
     return value
+
+
+def validate_public_base_url(value: str, *, dry_run: bool) -> str:
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise ValueError("PUBLIC_BASE_URL deve ser URL HTTP/HTTPS absoluta")
+    if parsed.username or parsed.password:
+        raise ValueError("PUBLIC_BASE_URL nao pode conter credenciais")
+    if parsed.query or parsed.fragment:
+        raise ValueError("PUBLIC_BASE_URL nao pode conter query ou fragmento")
+    if parsed.path not in {"", "/"}:
+        raise ValueError("PUBLIC_BASE_URL nao pode conter caminho")
+    if not dry_run:
+        if parsed.scheme != "https":
+            raise ValueError("PUBLIC_BASE_URL precisa ser HTTPS fora de DRY_RUN")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if hostname == "localhost" or hostname.endswith(".local") or (address and not address.is_global):
+            raise ValueError("PUBLIC_BASE_URL precisa ser publicamente acessivel fora de DRY_RUN")
+    return normalized
 
 
 def _float_env(name: str, default: float, *, minimum: float, maximum: float) -> float:
@@ -194,6 +220,7 @@ class Settings:
             ai_circuit_failures=_int_env("AI_CIRCUIT_FAILURES", 2),
             ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
         )
+        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
         if settings.ai_remote_provider not in {"cloudflare", "none"}:
             raise ValueError("AI_REMOTE_PROVIDER deve ser cloudflare ou none")
         if settings.cloudflare_account_id and not re.fullmatch(
