@@ -80,12 +80,14 @@ def is_offer_stale(offer: dict, *, now: datetime | None = None) -> bool:
     if not expiration:
         return False
     try:
-        expires = datetime.fromisoformat(str(expiration).replace("Z", "+00:00"))
+        normalized = normalize_utc_timestamp(str(expiration), field="expires_at")
+        expires = datetime.fromisoformat(normalized)
     except ValueError:
         return True
-    if expires.tzinfo is None:
-        expires = expires.replace(tzinfo=timezone.utc)
-    return expires <= (now or datetime.now(timezone.utc))
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return expires <= current.astimezone(timezone.utc)
 
 
 def validate_offer(offer: dict) -> None:
@@ -168,15 +170,25 @@ def validate_offer(offer: dict) -> None:
     expiration = offer.get("coupon_expiration")
     if offer.get("coupon") and expiration:
         try:
-            expires = datetime.fromisoformat(str(expiration).replace("Z", "+00:00"))
-            if expires.tzinfo is None:
-                expires = expires.replace(tzinfo=timezone.utc)
+            normalized = normalize_utc_timestamp(
+                str(expiration),
+                field="coupon_expiration",
+            )
+            expires = datetime.fromisoformat(normalized)
             if expires < datetime.now(timezone.utc):
                 errors.append("cupom expirado")
-        except ValueError:
-            errors.append("data de expiracao do cupom invalida")
-    if is_offer_stale(offer):
-        errors.append("oferta expirada; atualize preco, estoque e condicoes")
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    offer_expiration = offer.get("expires_at")
+    if offer_expiration:
+        try:
+            normalize_utc_timestamp(str(offer_expiration), field="expires_at")
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if is_offer_stale(offer):
+                errors.append("oferta expirada; atualize preco, estoque e condicoes")
     if errors:
         raise ComplianceError("; ".join(errors))
 
