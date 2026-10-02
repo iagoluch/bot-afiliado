@@ -1175,7 +1175,14 @@ class Database:
             if normalized[field] > MAX_SQLITE_INTEGER:
                 raise ValueError(f"{field} da conversao excede limite de armazenamento")
         if normalized.get("offer_id") is not None:
-            normalized["offer_id"] = int(normalized["offer_id"])
+            try:
+                normalized["offer_id"] = int(normalized["offer_id"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("offer_id da conversao deve ser inteiro") from exc
+            if normalized["offer_id"] <= 0:
+                raise ValueError("offer_id da conversao deve ser positivo")
+            if normalized["offer_id"] > MAX_SQLITE_INTEGER:
+                raise ValueError("offer_id da conversao excede limite de armazenamento")
 
         if normalized.get("click_id"):
             click = connection.execute(

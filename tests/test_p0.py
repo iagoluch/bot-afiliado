@@ -741,6 +741,33 @@ def test_conversion_import_is_idempotent_and_updates_analytics(db: Database, tmp
     assert overview["impressions"] is None
 
 
+def test_conversion_offer_id_fails_closed_before_sqlite_binding(db: Database) -> None:
+    base = {
+        "external_order_id": "invalid-offer-id",
+        "click_id": None,
+        "merchant": "Shopee",
+        "network": "Shopee Afiliados",
+        "value_cents": 1000,
+        "commission_cents": 100,
+        "status": "APPROVED",
+        "channel": None,
+        "campaign": None,
+        "timestamp": utc_now(),
+    }
+
+    with pytest.raises(ValueError, match="deve ser inteiro"):
+        db.import_conversion({**base, "offer_id": "not-an-integer"})
+
+    for value in (0, -1):
+        with pytest.raises(ValueError, match="deve ser positivo"):
+            db.import_conversion({**base, "offer_id": value})
+
+    with pytest.raises(ValueError, match="limite de armazenamento"):
+        db.import_conversion({**base, "offer_id": MAX_SQLITE_INTEGER + 1})
+
+    assert db.rows("SELECT id FROM conversions") == []
+
+
 def test_conversion_click_attribution_rejects_conflict_and_infers_missing_fields(db: Database) -> None:
     offer_id = insert_offer(db)
     other_offer_id = insert_second_offer(db)
