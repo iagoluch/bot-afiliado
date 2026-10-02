@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from app.config import Settings
-from app.models import normalize_utc_timestamp
+from app.models import MAX_SQLITE_INTEGER, normalize_utc_timestamp
 
 
 class ComplianceError(ValueError):
@@ -16,15 +16,23 @@ def _canonical_integer(value: object, label: str) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{label} invalido")
     if isinstance(value, int):
+        if value > MAX_SQLITE_INTEGER:
+            raise ValueError(f"{label} excede limite de armazenamento")
         return value
     if isinstance(value, float):
         if not math.isfinite(value) or not value.is_integer():
             raise ValueError(f"{label} invalido")
-        return int(value)
+        integer = int(value)
+        if integer > MAX_SQLITE_INTEGER:
+            raise ValueError(f"{label} excede limite de armazenamento")
+        return integer
     raw = str(value).strip()
     if not raw or not raw.lstrip("-").isdigit():
         raise ValueError(f"{label} invalido")
-    return int(raw)
+    integer = int(raw)
+    if integer > MAX_SQLITE_INTEGER:
+        raise ValueError(f"{label} excede limite de armazenamento")
+    return integer
 
 
 DEFAULT_MERCHANT_RULES = {
