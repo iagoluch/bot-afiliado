@@ -10,10 +10,8 @@ import sys
 import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 from app.config import Settings
 from app.db import Database
@@ -149,35 +147,6 @@ class WorkerLock:
         self.release()
 
 
-def _ollama_reachable(settings: Settings) -> bool:
-    base_url = str(getattr(settings, "ollama_base_url", os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")))
-    configured_timeout = float(getattr(settings, "ollama_timeout_seconds", 300))
-    parsed = urlsplit(base_url)
-    if (
-        parsed.scheme != "http"
-        or parsed.hostname not in {"127.0.0.1", "::1"}
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path not in {"", "/"}
-        or parsed.query
-        or parsed.fragment
-    ):
-        return False
-    connection: HTTPConnection | None = None
-    try:
-        connection = HTTPConnection(parsed.hostname, parsed.port or 11434, timeout=min(configured_timeout, 2.0))
-        # http.client não segue redirect; a sonda nunca sai do loopback validado.
-        connection.request("GET", "/api/version", headers={"Accept": "application/json"})
-        response = connection.getresponse()
-        response.read(4096)
-        return 200 <= response.status < 300
-    except Exception:
-        return False
-    finally:
-        if connection is not None:
-            connection.close()
-
-
 def _ffmpeg_available(settings: Settings) -> bool:
     configured = settings.ffmpeg_path
     if configured:
@@ -190,11 +159,10 @@ def runtime_status(
     db: Database,
     settings: Settings,
     *,
-    ollama_probe: Callable[[Settings], bool] = _ollama_reachable,
     ffmpeg_probe: Callable[[Settings], bool] = _ffmpeg_available,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Retorna estado operacional sem URLs, conteúdo de oferta ou segredos."""
+    """Retorna estado operacional sem URLs, conteudo de oferta ou segredos."""
     database_status = "ok"
     worker: dict[str, Any] = {
         "status": "unknown",
@@ -229,13 +197,25 @@ def runtime_status(
     except sqlite3.Error:
         database_status = "unavailable"
 
-    model = str(getattr(settings, "ollama_model", os.getenv("OLLAMA_MODEL", "qwen3.5:2b")))
+    remote_configured = settings.ai_remote_provider == "gemini" and bool(settings.gemini_api_key)
+    local_configured = (
+        settings.ai_local_enabled
+        and bool(settings.granite_cli_path)
+        and bool(settings.granite_model_path)
+    )
     return {
         "database": database_status,
         "worker": worker,
         "queue_depth": queue_depth,
-        "ollama_reachable": bool(ollama_probe(settings)),
-        "ollama_model": model,
+        "ai": {
+            "remote_provider": settings.ai_remote_provider if remote_configured else None,
+            "remote_model": settings.gemini_model if remote_configured else None,
+            "remote_configured": remote_configured,
+            "local_provider": "granite" if local_configured else None,
+            "local_enabled": settings.ai_local_enabled,
+            "local_configured": local_configured,
+            "fallback": "template",
+        },
         "ffmpeg_available": bool(ffmpeg_probe(settings)),
         "dry_run": settings.dry_run,
     }
