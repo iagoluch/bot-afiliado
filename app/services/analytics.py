@@ -26,8 +26,10 @@ _EXPRESSIONS = {
         "channel": "COALESCE(c.channel,v.channel,'unknown')",
         "campaign": "COALESCE(c.campaign_id,v.campaign,'unknown')",
         "format": "COALESCE(c.format,'unknown')",
-        "hour": "strftime('%H', COALESCE(c.timestamp,v.timestamp))",
-        "day": "strftime('%Y-%m-%d', COALESCE(c.timestamp,v.timestamp))",
+        # Tempo de conversao pertence ao evento de conversao. O clique continua
+        # sendo usado apenas para atribuicao de canal/campanha/criativo.
+        "hour": "strftime('%H', v.timestamp)",
+        "day": "strftime('%Y-%m-%d', v.timestamp)",
         "creative": "COALESCE(c.creative_id,'unknown')",
     },
     "publications": {
