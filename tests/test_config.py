@@ -93,6 +93,8 @@ def test_linux_entrypoints_delegate_env_loading_to_python() -> None:
     for unit in ("bot-afiliado-worker.service.in", "bot-afiliado-web.service.in"):
         template = (root / "scripts" / "systemd" / unit).read_text(encoding="utf-8")
         assert "EnvironmentFile=" not in template
+        assert "UMask=0077" in template
+        assert "NoNewPrivileges=true" in template
 
 
 def test_linux_installer_always_restricts_env_permissions() -> None:
