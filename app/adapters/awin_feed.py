@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import ipaddress
 from pathlib import Path
 from typing import Any, Iterable, TextIO
 from urllib.parse import urlsplit
@@ -58,7 +59,27 @@ class AwinFeedAdapter(AffiliateAdapter):
             raise ValueError("delimiter Awin deve ser um caractere CSV valido")
         if min(max_compressed_bytes, max_uncompressed_bytes, max_rows) < 1:
             raise ValueError("limites do feed Awin devem ser positivos")
-        self.allowed_affiliate_hosts = tuple(host.lower().strip(".") for host in allowed_affiliate_hosts if host)
+        normalized_hosts: list[str] = []
+        for raw_host in allowed_affiliate_hosts:
+            host = str(raw_host).strip().lower().strip(".")
+            if not host:
+                continue
+            try:
+                address = ipaddress.ip_address(host)
+            except ValueError:
+                address = None
+            if (
+                "/" in host
+                or ":" in host
+                or any(char.isspace() or ord(char) < 32 for char in host)
+                or host == "localhost"
+                or host.endswith(".local")
+                or (address is not None and not address.is_global)
+                or (address is None and "." not in host)
+            ):
+                raise ValueError(f"host afiliado Awin invalido: {raw_host!r}")
+            normalized_hosts.append(host)
+        self.allowed_affiliate_hosts = tuple(normalized_hosts)
         self.max_compressed_bytes = max_compressed_bytes
         self.max_uncompressed_bytes = max_uncompressed_bytes
         self.max_rows = max_rows
@@ -161,12 +182,23 @@ class AwinFeedAdapter(AffiliateAdapter):
         )
 
     def _validate_affiliate_url(self, value: str, row_number: int) -> None:
-        parsed = urlsplit(value)
-        host = (parsed.hostname or "").lower()
+        try:
+            parsed = urlsplit(value)
+            host = (parsed.hostname or "").lower()
+            port = parsed.port
+        except ValueError:
+            raise ValueError(f"linha {row_number}: aw_deep_link nao usa host Awin/permitido") from None
         allowed = host == "awin1.com" or host.endswith(".awin1.com") or any(
             host == entry or host.endswith(f".{entry}") for entry in self.allowed_affiliate_hosts
         )
-        if parsed.scheme != "https" or not allowed:
+        if (
+            parsed.scheme != "https"
+            or not allowed
+            or parsed.username
+            or parsed.password
+            or port is not None
+            or any(char.isspace() or ord(char) < 32 for char in value)
+        ):
             raise ValueError(f"linha {row_number}: aw_deep_link nao usa host Awin/permitido")
 
     @staticmethod
