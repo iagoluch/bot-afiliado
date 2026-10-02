@@ -16,7 +16,7 @@ from typing import Any
 from app.config import Settings
 from app.db import Database
 from app.models import utc_now
-from app.scheduler import run_tick
+from app.scheduler import run_tick, scheduler_now
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
 
@@ -405,7 +405,7 @@ class Worker:
             while not self.stop_event.is_set():
                 try:
                     result = retry_sqlite(
-                        lambda: self.tick(self.db, self.pipeline, self.source, datetime.now()),
+                        lambda: self.tick(self.db, self.pipeline, self.source, scheduler_now()),
                         wait=self._wait,
                     )
                     self._process_content_jobs(result)
