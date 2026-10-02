@@ -85,6 +85,9 @@ def test_settings_reads_ai_configuration(monkeypatch: pytest.MonkeyPatch, tmp_pa
         ("https://offers.example/path", "caminho"),
         ("https://offers.example?token=x", "query"),
         ("https://user:pass@offers.example", "credenciais"),
+        ("https://offers.example:notaport", "porta invalida"),
+        ("https://offers.example:70000", "porta invalida"),
+        ("https://offers.example:0", "porta invalida"),
     ),
 )
 def test_real_runtime_rejects_unsafe_public_base_urls(url: str, message: str) -> None:

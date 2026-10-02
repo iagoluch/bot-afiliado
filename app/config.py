@@ -80,6 +80,12 @@ def validate_public_base_url(value: str, *, dry_run: bool) -> str:
     normalized = value.strip().rstrip("/")
     parsed = urlsplit(normalized)
     hostname = (parsed.hostname or "").lower()
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("PUBLIC_BASE_URL contem porta invalida") from exc
+    if port == 0:
+        raise ValueError("PUBLIC_BASE_URL contem porta invalida")
     if parsed.scheme not in {"http", "https"} or not hostname:
         raise ValueError("PUBLIC_BASE_URL deve ser URL HTTP/HTTPS absoluta")
     if parsed.username or parsed.password:
