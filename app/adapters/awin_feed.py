@@ -54,8 +54,10 @@ class AwinFeedAdapter(AffiliateAdapter):
         max_rows: int = MAX_ROWS,
         delimiter: str = ",",
     ):
-        if len(delimiter) != 1:
-            raise ValueError("delimiter Awin deve ter um caractere")
+        if len(delimiter) != 1 or delimiter in {"\r", "\n", '"'}:
+            raise ValueError("delimiter Awin deve ser um caractere CSV valido")
+        if min(max_compressed_bytes, max_uncompressed_bytes, max_rows) < 1:
+            raise ValueError("limites do feed Awin devem ser positivos")
         self.allowed_affiliate_hosts = tuple(host.lower().strip(".") for host in allowed_affiliate_hosts if host)
         self.max_compressed_bytes = max_compressed_bytes
         self.max_uncompressed_bytes = max_uncompressed_bytes
@@ -74,15 +76,22 @@ class AwinFeedAdapter(AffiliateAdapter):
         try:
             with opener(path, "rt", encoding="utf-8-sig", newline="") as handle:
                 reader = csv.DictReader(_LimitedLines(handle, self.max_uncompressed_bytes), delimiter=self.delimiter)
+                headers = reader.fieldnames or []
+                if len(headers) != len(set(headers)):
+                    raise ValueError("feed Awin tem colunas duplicadas")
                 required = {"aw_deep_link", "product_name", "aw_product_id", "merchant_name", "merchant_id", "search_price", "currency"}
-                missing = required - set(reader.fieldnames or [])
+                missing = required - set(headers)
                 if missing:
                     raise ValueError(f"feed Awin sem colunas obrigatorias: {', '.join(sorted(missing))}")
                 offers: list[Offer] = []
                 for row_number, row in enumerate(reader, start=2):
                     if len(offers) >= self.max_rows:
                         raise ValueError(f"feed Awin excede limite de {self.max_rows} linhas")
+                    if None in row or any(value is None for value in row.values()):
+                        raise ValueError(f"linha {row_number}: estrutura CSV Awin invalida")
                     offers.append(self._normalize(row, row_number))
+        except csv.Error as exc:
+            raise ValueError("feed Awin CSV invalido") from exc
         finally:
             csv.field_size_limit(previous_limit)
         if not offers:
