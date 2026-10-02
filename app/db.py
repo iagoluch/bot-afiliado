@@ -1068,6 +1068,22 @@ class Database:
         normalized["external_order_id"] = str(normalized.get("external_order_id") or "").strip()
         if not normalized["external_order_id"]:
             raise ValueError("ID externo do pedido e obrigatorio")
+        normalized["merchant"] = str(normalized.get("merchant") or "").strip()
+        normalized["network"] = str(normalized.get("network") or "").strip()
+        normalized["timestamp"] = str(normalized.get("timestamp") or "").strip()
+        if not normalized["merchant"] or not normalized["network"]:
+            raise ValueError("merchant e network da conversao sao obrigatorios")
+        if not normalized["timestamp"]:
+            raise ValueError("timestamp da conversao e obrigatorio")
+        if normalized.get("status") not in {"PENDING", "APPROVED", "REJECTED", "PAID"}:
+            raise ValueError("status de conversao invalido")
+        for field in ("value_cents", "commission_cents"):
+            try:
+                normalized[field] = int(normalized.get(field))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field} da conversao deve ser inteiro") from exc
+            if normalized[field] < 0:
+                raise ValueError(f"{field} da conversao nao pode ser negativo")
         if normalized.get("offer_id") is not None:
             normalized["offer_id"] = int(normalized["offer_id"])
 
