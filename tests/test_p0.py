@@ -166,6 +166,23 @@ def test_content_disclosure_is_first_and_compliance_blocks_missing_disclosure(db
         validate_content("Oferta sem aviso")
     with pytest.raises(ComplianceError, match="HTTP inseguro"):
         validate_content("#publi\nhttp://example.test/go/1")
+    with pytest.raises(ComplianceError, match="4096"):
+        validate_content("#publi\n" + ("x" * 4096), max_chars=4096)
+
+
+def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    with db.connect() as connection:
+        connection.execute("UPDATE offers SET title=? WHERE id=?", ("X" * 5000, offer_id))
+
+    queued = Pipeline(db, settings).curate_and_queue([offer_id], "oversized")
+
+    assert queued == []
+    assert db.rows("SELECT id FROM content_packages") == []
+    assert db.rows("SELECT id FROM publish_queue") == []
 
 
 def test_compliance_blocks_out_of_stock() -> None:
