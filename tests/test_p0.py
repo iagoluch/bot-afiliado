@@ -176,6 +176,43 @@ def test_adapter_rejects_non_shopee_affiliate_url(tmp_path: Path) -> None:
         ShopeeManualAdapter().import_offers(source)
 
 
+def test_offer_timestamps_are_canonicalized_before_price_history(db: Database) -> None:
+    offer = Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="timestamped-offer",
+        title="Produto com horario",
+        current_price_cents=10000,
+        source_url="https://shopee.com.br/product/1/timestamped",
+        affiliate_url="https://s.shopee.com.br/timestamped",
+        collected_at="2026-10-02T08:00:00-03:00",
+        stock_status="IN_STOCK",
+    )
+    offer_id = Pipeline(
+        db,
+        settings_for(db.path.parent),
+    ).ingest_offers([offer])[0]
+
+    stored = db.get_offer(offer_id)
+    history = db.rows("SELECT observed_at FROM price_history WHERE offer_id=?", (offer_id,))
+    assert stored is not None
+    assert stored["collected_at"] == "2026-10-02T11:00:00+00:00"
+    assert history[0]["observed_at"] == "2026-10-02T11:00:00+00:00"
+
+    with pytest.raises(ComplianceError, match="timezone"):
+        validate_offer({
+            "merchant": "Shopee",
+            "affiliate_network": "Shopee Afiliados",
+            "external_product_id": "naive-time",
+            "title": "Produto",
+            "source_url": "https://shopee.com.br/product/1/naive",
+            "affiliate_url": "https://s.shopee.com.br/naive",
+            "current_price_cents": 10000,
+            "stock_status": "IN_STOCK",
+            "collected_at": "2026-10-02T08:00:00",
+        })
+
+
 def test_score_is_deterministic_and_ignores_unverified_discount(db: Database) -> None:
     offer_id = insert_offer(db)
     score, classification = score_offer(db, offer_id)
