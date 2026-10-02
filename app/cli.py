@@ -3,14 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from app.adapters.admitad_feed import AdmitadFeedAdapter
 from app.config import Settings
 from app.db import Database
-from app.scheduler import run_tick
+from app.scheduler import run_tick, scheduler_now
 from app.services.conversions import import_conversion_csv
 from app.services.llm import copy_preview
 from app.services.instagram_graph import InstagramReelPublisher
@@ -160,7 +159,7 @@ def main() -> None:
         result = {"imported": import_conversion_csv(db, args.source)}
     elif args.command == "scheduler-once":
         result = _run_recorded(db, "dry" if settings.dry_run else "real", args.adapter,
-                               lambda: run_tick(db, pipeline, args.source, datetime.now()))
+                               lambda: run_tick(db, pipeline, args.source, scheduler_now()))
     elif args.command == "events":
         result = [dict(row) for row in db.list_operation_events(args.limit)]
     elif args.command == "runtime-status":
