@@ -17,7 +17,13 @@ from app.db import Database
 from app.models import Offer
 from app.services.compliance import ComplianceError
 from app.services.llm import TemplateProvider
-from app.services.media import CreativeGenerator, _NoRedirect, _approved_image_url, load_approved_product_image
+from app.services.media import (
+    CreativeGenerator,
+    _NoRedirect,
+    _approved_image_url,
+    _fit_text_block,
+    load_approved_product_image,
+)
 from app.services.p1 import P1Pipeline
 from app.services.site import offer_slug
 from app.web import create_app
@@ -80,6 +86,8 @@ def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -
     assert first["ffmpeg"] == {"instagram_reel": "FFMPEG_UNAVAILABLE", "tiktok": "FFMPEG_UNAVAILABLE"}
     assert first["destination_url"].endswith(f"/o/fone-sem-fio-{offer_id}")
     assert len(first["packages"]) == 6
+    assert len(first["ab_comparison"]) == 4
+    assert all(path.endswith(".png") for path in first["ab_comparison"])
     queue = [dict(row) for row in db.list_social_queue()]
     assert len(queue) == 4
     status_by_format = {row["format"]: row["status"] for row in queue}
@@ -109,6 +117,75 @@ def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -
     digest_before = hashlib.sha256(feed_path.read_bytes()).hexdigest()
     pipeline.generate_offer(offer_id, "campaign-a")
     assert hashlib.sha256(feed_path.read_bytes()).hexdigest() == digest_before
+
+
+def test_renderer_wraps_long_text_without_clipping_and_removes_scene_debug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canvas = Image.new("RGB", (1080, 1920), "white")
+    draw = __import__("PIL.ImageDraw", fromlist=["ImageDraw"]).Draw(canvas)
+    font, lines = _fit_text_block(
+        draw,
+        "Conheça este produto com um texto propositalmente longo para validar quebra segura sem clipping lateral",
+        max_width=884,
+        max_height=300,
+        start_size=96,
+        min_size=34,
+        bold=True,
+        max_lines=4,
+        spacing=12,
+    )
+    assert lines
+    assert all(
+        draw.textbbox((0, 0), line, font=font)[2] - draw.textbbox((0, 0), line, font=font)[0] <= 884
+        for line in lines
+    )
+
+    captured_secondary: list[str] = []
+    from app.services import media as media_module
+
+    original_card = media_module._card
+
+    def observed_card(*args, **kwargs):
+        captured_secondary.append(str(kwargs.get("secondary") or ""))
+        return original_card(*args, **kwargs)
+
+    monkeypatch.setattr(media_module, "_card", observed_card)
+    generator = CreativeGenerator(
+        tmp_path / "creatives",
+        ffmpeg_path=str(tmp_path / "missing-ffmpeg"),
+        image_loader=lambda _url: None,
+    )
+    offer = {
+        "id": 1,
+        "title": "Fone Bluetooth Exemplo com título muito maior que o normal",
+        "current_price_cents": 11990,
+        "original_price_cents": None,
+        "discount_percent": None,
+        "coupon": "OFERTA10",
+        "shipping": "Frete gratis",
+        "category": "Eletronicos",
+        "image_urls_json": "[]",
+    }
+    reel_script = (
+        {"start": 0, "end": 2, "role": "hook", "text": "Conheça Fone Bluetooth Exemplo com um hook muito longo sem sair da tela"},
+        {"start": 2, "end": 6, "role": "product", "text": "Descrição demonstrativa longa para validar o layout vertical"},
+        {"start": 6, "end": 10, "role": "price", "text": "Por R$ 119,90"},
+        {"start": 10, "end": 14, "role": "benefit", "text": "Confira as condições. Cupom OFERTA10."},
+        {"start": 14, "end": 18, "role": "cta", "text": "Confira preço e disponibilidade no link"},
+    )
+    assets = generator.generate(offer, "visual-v2", reel_script, reel_script)
+
+    assert len(assets.ab_previews) == 4
+    assert all(path.exists() for path in assets.ab_previews)
+    assert all("Cena " not in secondary for secondary in captured_secondary)
+    assert assets.reel_video.status == "FFMPEG_UNAVAILABLE"
+    assert assets.tiktok_video.status == "FFMPEG_UNAVAILABLE"
+
+    with Image.open(assets.reel_frames[0]) as frame:
+        assert frame.size == (1080, 1920)
+    with Image.open(assets.ab_previews[2]) as comparison:
+        assert comparison.size == (2160, 1992)
 
 
 def test_local_hook_enters_video_package_without_changing_facts_and_is_reused(tmp_path: Path) -> None:
