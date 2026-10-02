@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+
+import app.services.conversions as conversions_service
 from fastapi.testclient import TestClient
 
 from app.adapters.base import Capability, CapabilityStatus
@@ -358,6 +360,76 @@ def test_unavailable_offer_never_redirects_or_records_click(tmp_path: Path, colu
     assert page.status_code == 200
     assert "Ir para a oferta" not in page.text
     assert "Preço aguardando atualização" in client.get("/offers").text
+
+
+def test_conversion_csv_import_is_atomic_when_later_row_is_invalid(
+    db: Database, tmp_path: Path,
+) -> None:
+    path = tmp_path / "atomic-conversions.csv"
+    path.write_text(
+        "external_order_id,status,value,commission\n"
+        "order-valid,APPROVED,100.00,10.00\n"
+        "order-invalid,NOT_A_STATUS,200.00,20.00\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="status de conversao invalido"):
+        import_conversion_csv(db, path)
+
+    assert db.rows("SELECT id FROM conversions") == []
+
+
+def test_conversion_csv_limits_fail_closed_without_partial_import(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "bounded-conversions.csv"
+    path.write_text(
+        "external_order_id,status,value,commission\n"
+        "order-1,APPROVED,100.00,10.00\n"
+        "order-2,APPROVED,200.00,20.00\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(conversions_service, "MAX_CONVERSION_ROWS", 1)
+    with pytest.raises(ValueError, match="excede limite de 1 linhas"):
+        import_conversion_csv(db, path)
+    assert db.rows("SELECT id FROM conversions") == []
+
+    monkeypatch.setattr(conversions_service, "MAX_CONVERSION_FILE_BYTES", 10)
+    with pytest.raises(ValueError, match="arquivo de conversoes excede limite"):
+        import_conversion_csv(db, path)
+    assert db.rows("SELECT id FROM conversions") == []
+
+
+def test_conversion_csv_requires_unambiguous_headers_and_normalizes_blank_defaults(
+    db: Database, tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing-header.csv"
+    missing.write_text("status,value\nAPPROVED,10.00\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="external_order_id"):
+        import_conversion_csv(db, missing)
+
+    duplicate = tmp_path / "duplicate-header.csv"
+    duplicate.write_text(
+        "external_order_id,status,status\norder-1,APPROVED,APPROVED\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cabecalhos duplicados"):
+        import_conversion_csv(db, duplicate)
+
+    normalized = tmp_path / "normalized-fields.csv"
+    normalized.write_text(
+        "external_order_id,status,merchant,network,timestamp\n"
+        "order-1,APPROVED,   ,   ,   \n",
+        encoding="utf-8",
+    )
+    assert import_conversion_csv(db, normalized) == 1
+    row = db.rows(
+        "SELECT merchant,network,timestamp FROM conversions WHERE external_order_id='order-1'"
+    )[0]
+    assert row["merchant"] == "Shopee"
+    assert row["network"] == "Shopee Afiliados"
+    assert row["timestamp"]
 
 
 def test_conversion_import_is_idempotent_and_updates_analytics(db: Database, tmp_path: Path) -> None:
