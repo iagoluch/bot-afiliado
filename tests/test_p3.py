@@ -15,6 +15,7 @@ from app.cli import main as cli_main
 from app.config import Settings
 from app.db import Database
 from app.models import Offer
+from app.services.admin_dashboard import page_data
 from app.services.analytics import DIMENSIONS, analytics_breakdown
 from app.services.llm import TemplateProvider
 from app.services.compliance import ComplianceError, validate_distribution, validate_offer
@@ -131,6 +132,29 @@ def test_dynamic_web_responses_include_defensive_security_headers(tmp_path: Path
 
     assert client.get("/openapi.json").status_code == 401
     assert client.get("/openapi.json", headers=auth("secret")).status_code == 200
+
+
+def test_affiliate_program_dashboard_counts_canonical_networks(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+
+    db.upsert_offer(offer(product_id="shopee-program"))
+    db.upsert_offer(
+        offer(
+            product_id="ml-program",
+            merchant="Mercado Livre",
+            network="Mercado Livre Afiliados e Criadores",
+        )
+    )
+
+    rows = {
+        row["program"]: row
+        for row in page_data(db, settings, "affiliate-programs")
+    }
+
+    assert rows["shopee_manual_official_link"]["offers"] == 1
+    assert rows["mercadolivre_manual_official_link"]["offers"] == 1
 
 
 def test_admin_basic_auth_public_routes_and_secret_redaction(tmp_path: Path) -> None:
