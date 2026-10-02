@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala o ambiente local do BOT AFILIADO no Linux sem baixar modelos Ollama.
+# Instala o ambiente local do BOT AFILIADO no Linux sem baixar modelos de IA.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -34,13 +34,7 @@ if [[ ! -f "$REPO_DIR/.env" ]]; then
     printf 'Criado %s com DRY_RUN=true. Ajuste somente quando necessario.\n' "$REPO_DIR/.env"
 fi
 
-if ! require_command ollama; then
-    printf 'Ollama ausente: geracao textual usara template local.\n' >&2
-elif ! ollama list | awk 'NR > 1 {print $1}' | grep -Fxq 'qwen3.5:2b'; then
-    printf 'Modelo Ollama ausente: qwen3.5:2b. O worker usara fallback ate instalacao manual.\n' >&2
-fi
-
-if ! require_command ffmpeg; then
+printf 'IA opcional: configure GEMINI_API_KEY no .env; Granite local permanece desligado por padrao.\n'\n\nif ! require_command ffmpeg; then
     printf 'FFmpeg ausente: videos ficarao com asset pendente; imagens continuam disponiveis.\n' >&2
 fi
 
