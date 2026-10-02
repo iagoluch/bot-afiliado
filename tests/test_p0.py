@@ -558,6 +558,14 @@ def test_telegram_official_contract_parses_message_id() -> None:
     assert b"chat_id=%40channel" in captured["body"]
 
 
+def test_scheduler_uses_only_latest_elapsed_slot_after_long_pause() -> None:
+    assert due_slot(datetime(2026, 9, 30, 6, 59)) is None
+    assert due_slot(datetime(2026, 9, 30, 7, 6)) == "2026-09-30T07:00"
+    assert due_slot(datetime(2026, 9, 30, 12, 59)) == "2026-09-30T10:00"
+    assert due_slot(datetime(2026, 9, 30, 21, 30)) == "2026-09-30T19:00"
+    assert due_slot(datetime(2026, 9, 30, 23, 59)) == "2026-09-30T22:00"
+
+
 def test_scheduler_slot_is_claimed_once(db: Database, tmp_path: Path) -> None:
     assert due_slot(datetime(2026, 9, 30, 7, 3)) == "2026-09-30T07:00"
 
@@ -598,7 +606,9 @@ def test_scheduler_slot_is_claimed_once(db: Database, tmp_path: Path) -> None:
     assert failing.calls == 2
 
 
-def test_scheduler_tick_processes_due_retry_outside_ingestion_window(db: Database, tmp_path: Path) -> None:
+def test_scheduler_catches_up_latest_slot_then_returns_to_queue_work(
+    db: Database, tmp_path: Path,
+) -> None:
     class RetryPipeline:
         def __init__(self):
             self.settings = SimpleNamespace(dry_run=True)
@@ -607,16 +617,24 @@ def test_scheduler_tick_processes_due_retry_outside_ingestion_window(db: Databas
 
         def run(self, source, campaign_id):
             self.run_calls += 1
-            raise AssertionError("nao deve importar fora da janela")
+            return {"campaign_id": campaign_id}
 
         def process_one(self):
             self.process_calls += 1
             return {"status": "SIMULATED", "queue_id": 7}
 
     pipeline = RetryPipeline()
-    result = run_tick(db, pipeline, tmp_path / "offers.csv", datetime(2026, 9, 30, 8, 0))
-    assert result == {"status": "queue", "result": {"status": "SIMULATED", "queue_id": 7}}
-    assert pipeline.run_calls == 0
+    now = datetime(2026, 9, 30, 8, 0)
+
+    first = run_tick(db, pipeline, tmp_path / "offers.csv", now)
+    assert first["status"] == "cycle"
+    assert first["result"]["campaign_id"] == "scheduled-2026-09-30T07:00"
+    assert pipeline.run_calls == 1
+    assert pipeline.process_calls == 0
+
+    second = run_tick(db, pipeline, tmp_path / "offers.csv", now)
+    assert second == {"status": "queue", "result": {"status": "SIMULATED", "queue_id": 7}}
+    assert pipeline.run_calls == 1
     assert pipeline.process_calls == 1
 
 
