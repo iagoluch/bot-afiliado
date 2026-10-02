@@ -544,6 +544,12 @@ def copy_preview(
         provider=provider,
         settings=settings,
     )
+    script = list(spec.script)
+    if source != "template" and spec.format in {"reel", "vertical_video"}:
+        script = [
+            {**scene, "text": hook} if scene.get("role") == "hook" else scene
+            for scene in script
+        ]
     return {
         "status": "REVIEW_ONLY",
         "source": source,
@@ -552,6 +558,6 @@ def copy_preview(
         "hook_suggestion": hook,
         "canonical_caption": spec.caption,
         "hashtags": list(spec.hashtags),
-        "script": list(spec.script),
+        "script": script,
         "note": "Sugestao nao verificada: revisar editorialmente. Nao altera pacotes, filas ou publicacao.",
     }
