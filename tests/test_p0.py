@@ -223,6 +223,33 @@ def test_compliance_blocks_out_of_stock() -> None:
         })
 
 
+def test_offer_batch_validation_fails_before_first_database_write(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    valid = Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="valid-before-invalid",
+        title="Produto valido",
+        current_price_cents=10000,
+        source_url="https://shopee.com.br/product/1/valid",
+        affiliate_url="https://s.shopee.com.br/valid",
+        stock_status="IN_STOCK",
+    )
+    invalid = replace(
+        valid,
+        external_product_id="invalid-second",
+        title="Produto invalido",
+        current_price_cents=0,
+    )
+
+    with pytest.raises(ComplianceError, match="preco atual"):
+        Pipeline(db, settings).ingest_offers([valid, invalid])
+
+    assert db.rows("SELECT id FROM offers") == []
+
+
 def test_full_pipeline_dry_run_is_simulated_and_does_not_create_cooldown(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
