@@ -400,14 +400,18 @@ class Database:
         with self.connect() as connection:
             connection.execute(
                 f"INSERT INTO offers ({columns}) VALUES ({placeholders}) "
-                f"ON CONFLICT(affiliate_network, merchant, external_product_id) DO UPDATE SET {updates}",
+                f"ON CONFLICT(affiliate_network, merchant, external_product_id) DO UPDATE SET {updates} "
+                "WHERE excluded.collected_at >= offers.collected_at",
                 values,
             )
             row = connection.execute(
-                "SELECT id FROM offers WHERE affiliate_network=? AND merchant=? AND external_product_id=?",
+                """SELECT id,content_fingerprint
+                   FROM offers
+                   WHERE affiliate_network=? AND merchant=? AND external_product_id=?""",
                 (offer.affiliate_network, offer.merchant, offer.external_product_id),
             ).fetchone()
             offer_id = int(row["id"])
+            current_content_fingerprint = str(row["content_fingerprint"])
             connection.execute(
                 "INSERT OR IGNORE INTO price_history(offer_id, price_cents, observed_at) VALUES(?,?,?)",
                 (offer_id, offer.current_price_cents, offer_values["collected_at"]),
@@ -422,7 +426,7 @@ class Database:
                     """SELECT id FROM content_jobs
                        WHERE offer_id=? AND facts_fingerprint=? AND dry_run=? AND status!='SUPERSEDED'
                        LIMIT 1""",
-                    (offer_id, content_fingerprint, int(content_dry_run)),
+                    (offer_id, current_content_fingerprint, int(content_dry_run)),
                 ).fetchone()
                 if existing is None:
                     connection.execute(
@@ -434,7 +438,15 @@ class Database:
                                status='PENDING',attempts=0,available_at=excluded.available_at,
                                error_type=NULL,updated_at=excluded.updated_at
                            WHERE content_jobs.status='SUPERSEDED'""",
-                        (offer_id, campaign_id, content_fingerprint, int(content_dry_run), now, now, now),
+                        (
+                            offer_id,
+                            campaign_id,
+                            current_content_fingerprint,
+                            int(content_dry_run),
+                            now,
+                            now,
+                            now,
+                        ),
                     )
         return offer_id
 
