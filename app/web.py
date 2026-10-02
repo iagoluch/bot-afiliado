@@ -27,6 +27,7 @@ from app.worker import runtime_status
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 ADMIN_PREFIXES = ("/admin", "/api")
+ADMIN_PATHS = {"/", "/docs", "/redoc", "/openapi.json"}
 
 
 def _offer_available(offer: dict) -> bool:
@@ -113,7 +114,9 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
     @app.middleware("http")
     async def protect_admin(request: Request, call_next):
         path = request.url.path
-        protected = path == "/" or any(path == prefix or path.startswith(prefix + "/") for prefix in ADMIN_PREFIXES)
+        protected = path in ADMIN_PATHS or any(
+            path == prefix or path.startswith(prefix + "/") for prefix in ADMIN_PREFIXES
+        )
         if protected and _admin_exposed(settings) and request.url.scheme != "https":
             return Response(status_code=426, content="HTTPS obrigatorio")
         if protected and settings.admin_password and not _authorized(request.headers.get("Authorization"), settings.admin_password):
