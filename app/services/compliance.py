@@ -90,7 +90,7 @@ def is_offer_stale(offer: dict, *, now: datetime | None = None) -> bool:
 def validate_offer(offer: dict) -> None:
     errors: list[str] = []
 
-    for field in ("merchant", "affiliate_network", "external_product_id", "title"):
+    for field in ("merchant", "affiliate_network", "title"):
         if not str(offer.get(field) or "").strip():
             errors.append(f"{field} ausente")
 
