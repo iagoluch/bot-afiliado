@@ -12,7 +12,6 @@ import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 try:
@@ -81,7 +80,7 @@ def _clean_marketplace_text(value: str, limit: int) -> str:
 
 
 class CloudflareProvider:
-    """Cloudflare Workers AI client. Credentials stay in headers/config and are never logged."""
+    """Cloudflare Workers AI client using the OpenAI-compatible chat endpoint."""
 
     def __init__(
         self,
@@ -128,19 +127,24 @@ class CloudflareProvider:
         )
         payload = json.dumps(
             {
+                "model": self.model,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
                 ],
-                "max_completion_tokens": 64,
+                "max_completion_tokens": 96,
                 "temperature": 0.2,
+                "stream": False,
+                # Gemma 4 reasons by default. Disable thinking for this tiny editorial task so
+                # the completion budget is spent on the visible answer rather than hidden reasoning.
+                "chat_template_kwargs": {"enable_thinking": False},
                 "options": {"rejectIfBusy": True},
             },
             ensure_ascii=False,
         ).encode("utf-8")
         endpoint = (
             "https://api.cloudflare.com/client/v4/accounts/"
-            f"{self.account_id}/ai/run/{quote(self.model, safe='@/._-')}"
+            f"{self.account_id}/ai/v1/chat/completions"
         )
         request = Request(
             endpoint,
@@ -157,27 +161,26 @@ class CloudflareProvider:
         if len(raw) > 65_536:
             raise ValueError("resposta do Cloudflare Workers AI excedeu o limite")
         try:
-            envelope = json.loads(raw.decode("utf-8"))
+            result = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("resposta invalida do Cloudflare Workers AI") from exc
-        if not isinstance(envelope, dict) or envelope.get("success") is False:
-            raise ValueError("Cloudflare Workers AI retornou falha")
-        result = envelope.get("result")
-        text: str | None = None
-        if isinstance(result, str):
-            text = result
-        elif isinstance(result, dict):
-            response_text = result.get("response")
-            if isinstance(response_text, str):
-                text = response_text
-            if not text:
-                choices = result.get("choices")
-                if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-                    message = choices[0].get("message")
-                    if isinstance(message, dict) and isinstance(message.get("content"), str):
-                        text = message["content"]
-                    elif isinstance(choices[0].get("text"), str):
-                        text = choices[0]["text"]
+        if not isinstance(result, dict):
+            raise ValueError("resposta invalida do Cloudflare Workers AI")
+        choices = result.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ValueError("Cloudflare Workers AI nao retornou choices")
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            raise ValueError("Cloudflare Workers AI nao retornou message")
+        content = message.get("content")
+        text: str | None = content if isinstance(content, str) else None
+        if text is None and isinstance(content, list):
+            parts = [
+                part.get("text")
+                for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            ]
+            text = "".join(parts)
         if not isinstance(text, str) or not text.strip():
             raise ValueError("Cloudflare Workers AI nao retornou texto")
         text = text.strip()
