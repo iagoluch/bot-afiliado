@@ -171,11 +171,12 @@ Após importar uma oferta, consulte o ID com `overview` ou no painel e execute:
 .venv\Scripts\python.exe -m app.cli copy-preview 1 --channel instagram_feed
 ```
 
-Sem chave ou modelo local homologado, o comando retorna `source=template`. O provider remoto padrão é Gemini; configure apenas a chave no ambiente ou `.env`:
+Sem credenciais remotas ou modelo local homologado, o comando retorna `source=template`. O provider remoto padrão é Cloudflare Workers AI com Gemma 4 26B A4B. No painel Workers AI, use **Use REST API**, crie um API Token e copie o Account ID. Depois configure:
 
 ```bat
-set GEMINI_API_KEY=sua_chave
-set GEMINI_MODEL=gemini-3.8-flash
+set CLOUDFLARE_ACCOUNT_ID=seu_account_id
+set CLOUDFLARE_API_TOKEN=seu_token
+set CLOUDFLARE_AI_MODEL=@cf/google/gemma-4-26b-a4b-it
 .venv\Scripts\python.exe -m app.cli copy-preview 1 --channel instagram_feed
 ```
 
@@ -187,9 +188,9 @@ set GRANITE_CLI_PATH=C:\caminho\llama-cli.exe
 set GRANITE_MODEL_PATH=C:\caminho\granite.gguf
 ```
 
-Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. A IA pode usar somente tokens seguros do título/categoria no hook; preço, desconto, cupom, estoque, URLs, disclosure, score e compliance continuam em Python. A ordem automática é Gemini -> Granite (somente se habilitado) -> TemplateProvider. Timeout, resposta inválida ou rate limit não interrompem o pipeline.
+Os canais aceitos são `telegram`, `instagram_feed`, `instagram_story`, `instagram_reel`, `tiktok` e `site`. `copy-preview` continua `REVIEW_ONLY` e não grava `ContentPackage`, não enfileira nem publica. A IA pode usar somente tokens seguros do título/categoria no hook; preço, desconto, cupom, estoque, URLs, disclosure, score e compliance continuam em Python. A ordem automática é Cloudflare Workers AI -> Granite (somente se habilitado) -> TemplateProvider. Timeout, resposta inválida ou rate limit não interrompem o pipeline.
 
-Duas falhas/rejeições consecutivas abrem o circuit breaker do provider por 300 s por padrão. Cada tentativa grava no stderr somente `provider`, `status`, `duration_ms`, `fallback_reason` e `error_type`; chave, prompt, resposta e URL não são logados. No free tier do Gemini, trate somente dados públicos de catálogo: o Google informa que conteúdo do nível gratuito pode ser usado para melhorar seus produtos.
+Duas falhas/rejeições consecutivas abrem o circuit breaker do provider por 300 s por padrão. Cada tentativa grava no stderr somente `provider`, `status`, `duration_ms`, `fallback_reason` e `error_type`; chave, prompt, resposta e URL não são logados. Workers AI oferece 10.000 Neurons/dia sem custo no plano Free. Cloudflare declara que não usa Customer Content do Workers AI para treinar modelos ou melhorar serviços sem consentimento explícito.
 
 ## Agendamento P0
 
@@ -246,7 +247,7 @@ O teste FFmpeg é executado quando `ffmpeg` está no PATH ou `imageio-ffmpeg` es
 
 ## Execução contínua no notebook Acer com Lubuntu
 
-O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Qwen/Ollama não fazem mais parte da rota operacional. Sem `GEMINI_API_KEY`, o bot usa `TemplateProvider` e continua funcional; quando a chave estiver configurada, Gemini é o provider principal. Granite local permanece `AI_LOCAL_ENABLED=false` até uma homologação específica demonstrar latência e uso de RAM/swap aceitáveis.
+O alvo é i3-6100U, 4 GB de RAM, HDD, cerca de 8,5 GB de swap e sem GPU dedicada. Qwen/Ollama não fazem mais parte da rota operacional. Sem `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`, o bot usa `TemplateProvider` e continua funcional; com ambos configurados, Cloudflare Workers AI é o provider principal. Granite local permanece `AI_LOCAL_ENABLED=false` até uma homologação específica demonstrar latência e uso de RAM/swap aceitáveis.
 
 Depois de autenticar o GitHub no notebook:
 
