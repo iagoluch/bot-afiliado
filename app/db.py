@@ -750,7 +750,21 @@ class Database:
                 "INSERT OR IGNORE INTO publish_queue(offer_id,content_package_id,channel,campaign_id,creative_id,idempotency_key,affiliate_url_snapshot,dry_run,status,available_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'PENDING',?,?,?)",
                 (offer_id, content_id, channel, campaign_id, creative_id, idempotency_key, offer["affiliate_url"], int(dry_run), now, now, now),
             )
-            row = connection.execute("SELECT id FROM publish_queue WHERE idempotency_key=?", (idempotency_key,)).fetchone()
+            row = connection.execute(
+                """SELECT id,offer_id,channel,campaign_id,creative_id,dry_run
+                   FROM publish_queue WHERE idempotency_key=?""",
+                (idempotency_key,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("fila nao encontrada apos enqueue")
+            if (
+                int(row["offer_id"]) != int(offer_id)
+                or str(row["channel"]) != channel
+                or str(row["campaign_id"]) != campaign_id
+                or str(row["creative_id"]) != creative_id
+                or bool(row["dry_run"]) != bool(dry_run)
+            ):
+                raise ValueError("idempotency_key da fila conflita com outro contexto")
             return int(row["id"])
 
     def claim_due(self, *, dry_run: bool) -> sqlite3.Row | None:

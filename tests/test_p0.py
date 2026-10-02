@@ -806,6 +806,59 @@ def test_retry_backoff_and_circuit_breaker_after_three_failures(tmp_path: Path) 
     assert state["open_until"] is not None
 
 
+def test_queue_idempotency_key_is_bound_to_its_original_context(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    first = insert_offer(db)
+    second = insert_second_offer(db)
+
+    first_content = db.add_content(first, "telegram", "primeiro")
+    queue_id = db.enqueue(
+        first,
+        first_content,
+        "telegram",
+        "campaign-a",
+        "creative-a",
+        "shared-key",
+        dry_run=True,
+    )
+
+    replacement_content = db.add_content(first, "telegram", "primeiro atualizado")
+    assert db.enqueue(
+        first,
+        replacement_content,
+        "telegram",
+        "campaign-a",
+        "creative-a",
+        "shared-key",
+        dry_run=True,
+    ) == queue_id
+
+    second_content = db.add_content(second, "telegram", "segundo")
+    with pytest.raises(ValueError, match="idempotency_key da fila conflita com outro contexto"):
+        db.enqueue(
+            second,
+            second_content,
+            "telegram",
+            "campaign-b",
+            "creative-b",
+            "shared-key",
+            dry_run=True,
+        )
+
+    rows = db.rows(
+        "SELECT id,offer_id,campaign_id,creative_id,dry_run FROM publish_queue WHERE idempotency_key=?",
+        ("shared-key",),
+    )
+    assert len(rows) == 1
+    assert rows[0]["id"] == queue_id
+    assert rows[0]["offer_id"] == first
+    assert rows[0]["campaign_id"] == "campaign-a"
+    assert rows[0]["creative_id"] == "creative-a"
+    assert rows[0]["dry_run"] == 1
+
+
 def test_queue_claim_is_strictly_isolated_between_dry_and_real_modes(tmp_path: Path) -> None:
     dry_settings = settings_for(tmp_path)
     real_settings = replace(dry_settings, dry_run=False, public_base_url="https://offers.example")
