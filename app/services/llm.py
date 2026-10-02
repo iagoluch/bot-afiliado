@@ -123,7 +123,7 @@ class GeminiProvider:
             {
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": json.dumps(data, ensure_ascii=False)}]}],
-                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 64},
+                "generationConfig": {\n                    "thinkingConfig": {"thinkingLevel": "low"},\n                    "maxOutputTokens": 256,\n                },
             },
             ensure_ascii=False,
         ).encode("utf-8")
@@ -160,7 +160,11 @@ class GeminiProvider:
         text = "".join(
             part.get("text", "")
             for part in parts
-            if isinstance(part, dict) and isinstance(part.get("text"), str)
+            if (
+                isinstance(part, dict)
+                and not part.get("thought", False)
+                and isinstance(part.get("text"), str)
+            )
         ).strip()
         if not text:
             raise ValueError("resposta vazia do Gemini")
