@@ -218,6 +218,7 @@ class P1Pipeline:
                 "instagram_reel": assets.reel_video.status,
                 "tiktok": assets.tiktok_video.status,
             },
+            "ab_comparison": self._relative_assets(list(assets.ab_previews)),
             "packages": packages,
         }
 
