@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from app.config import Settings
+from app.models import normalize_utc_timestamp
 
 
 class ComplianceError(ValueError):
@@ -152,6 +153,13 @@ def validate_offer(offer: dict) -> None:
             continue
         if number < minimum or (maximum is not None and number > maximum):
             errors.append(f"{label} fora do intervalo permitido")
+
+    collected_at = offer.get("collected_at")
+    if collected_at:
+        try:
+            normalize_utc_timestamp(str(collected_at), field="collected_at")
+        except ValueError as exc:
+            errors.append(str(exc))
 
     expiration = offer.get("coupon_expiration")
     if offer.get("coupon") and expiration:
