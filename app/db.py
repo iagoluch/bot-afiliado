@@ -1116,12 +1116,23 @@ class Database:
             impressions = int(connection.execute("SELECT COUNT(*) FROM impressions WHERE verified_real=1").fetchone()[0])
             publications = int(connection.execute("SELECT COUNT(*) FROM publications WHERE dry_run=0").fetchone()[0])
             simulations = int(connection.execute("SELECT COUNT(*) FROM publications WHERE dry_run=1").fetchone()[0])
-            conversions = connection.execute("SELECT COUNT(*) count, COALESCE(SUM(value_cents),0) revenue, COALESCE(SUM(commission_cents),0) commission FROM conversions WHERE status IN ('APPROVED','PAID')").fetchone()
+            conversions = connection.execute(
+                """SELECT COUNT(*) count,
+                          SUM(CASE WHEN click_id IS NOT NULL THEN 1 ELSE 0 END) attributed_count,
+                          COALESCE(SUM(value_cents),0) revenue,
+                          COALESCE(SUM(commission_cents),0) commission,
+                          COALESCE(SUM(CASE WHEN click_id IS NOT NULL THEN commission_cents ELSE 0 END),0)
+                              attributed_commission
+                   FROM conversions
+                   WHERE status IN ('APPROVED','PAID')"""
+            ).fetchone()
             queue = connection.execute("SELECT status, COUNT(*) count FROM publish_queue GROUP BY status").fetchall()
             social_queue = connection.execute("SELECT status, COUNT(*) count FROM social_queue GROUP BY status").fetchall()
             best_offer = connection.execute("SELECT o.id,o.title,COUNT(c.click_id) clicks FROM clicks c JOIN offers o ON o.id=c.offer_id GROUP BY o.id ORDER BY clicks DESC,o.id LIMIT 1").fetchone()
             best_channel = connection.execute("SELECT channel,COUNT(*) clicks FROM clicks GROUP BY channel ORDER BY clicks DESC LIMIT 1").fetchone()
         conversion_count = int(conversions["count"])
+        attributed_conversion_count = int(conversions["attributed_count"])
+        attributed_commission = int(conversions["attributed_commission"])
         return {
             "offers": int(totals["offers"]),
             "approved_offers": int(totals["approved_offers"]),
@@ -1133,8 +1144,8 @@ class Database:
             "revenue_cents": int(conversions["revenue"]),
             "commission_cents": int(conversions["commission"]),
             "ctr": round(clicks / impressions * 100, 2) if impressions else None,
-            "cvr": round(conversion_count / clicks * 100, 2) if clicks else 0.0,
-            "epc_cents": round(int(conversions["commission"]) / clicks, 2) if clicks else 0.0,
+            "cvr": round(attributed_conversion_count / clicks * 100, 2) if clicks else 0.0,
+            "epc_cents": round(attributed_commission / clicks, 2) if clicks else 0.0,
             "revenue_per_post_cents": round(int(conversions["revenue"]) / publications, 2) if publications else 0.0,
             "commission_per_post_cents": round(int(conversions["commission"]) / publications, 2) if publications else 0.0,
             "queue": {row["status"]: row["count"] for row in queue},
