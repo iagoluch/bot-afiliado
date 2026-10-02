@@ -44,20 +44,23 @@ def _conversion_rows(path: Path) -> Iterator[dict]:
                 status = str(row.get("status") or "").strip().upper()
                 if status not in VALID_STATUSES:
                     raise ValueError(f"status de conversao invalido na linha {index}: {status}")
-                offer_id = int(row["offer_id"]) if row.get("offer_id") else None
+                offer_id = int(row["offer_id"]) if str(row.get("offer_id") or "").strip() else None
                 click_id = str(row.get("click_id") or "").strip() or None
+                merchant = str(row.get("merchant") or "").strip() or "Shopee"
+                network = str(row.get("network") or "").strip() or "Shopee Afiliados"
+                timestamp = str(row.get("timestamp") or "").strip() or utc_now()
                 yield {
                     "external_order_id": str(row.get("external_order_id") or "").strip(),
                     "offer_id": offer_id,
                     "click_id": click_id,
-                    "merchant": str(row.get("merchant") or "Shopee").strip(),
-                    "network": str(row.get("network") or "Shopee Afiliados").strip(),
+                    "merchant": merchant,
+                    "network": network,
                     "value_cents": money_to_cents(row.get("value")) or 0,
                     "commission_cents": money_to_cents(row.get("commission")) or 0,
                     "status": status,
                     "channel": str(row.get("channel") or "").strip() or None,
                     "campaign": str(row.get("campaign") or "").strip() or None,
-                    "timestamp": str(row.get("timestamp") or utc_now()).strip(),
+                    "timestamp": timestamp,
                 }
     except csv.Error as exc:
         raise ValueError("CSV de conversoes invalido") from exc
