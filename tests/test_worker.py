@@ -445,6 +445,69 @@ def test_persisted_queue_is_processed_after_database_reopen(tmp_path: Path) -> N
     assert reopened.queue_depth(dry_run=True) == 0
 
 
+def test_late_old_offer_observation_never_rewinds_current_facts_or_content_job(
+    tmp_path: Path,
+) -> None:
+    db = Database(tmp_path / "monotonic-offer.db")
+    db.init()
+    newer = Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="same-offer",
+        title="Produto atual",
+        current_price_cents=9000,
+        source_url="https://shopee.com.br/product/1/same-offer",
+        affiliate_url="https://s.shopee.com.br/current",
+        coupon="ATUAL",
+        collected_at="2026-10-02T12:00:00+00:00",
+        stock_status="IN_STOCK",
+    )
+    offer_id = db.upsert_offer(
+        newer,
+        content_campaign_id="newer",
+        content_dry_run=True,
+    )
+
+    older = replace(
+        newer,
+        title="Produto antigo",
+        current_price_cents=12000,
+        affiliate_url="https://s.shopee.com.br/old",
+        coupon="ANTIGO",
+        collected_at="2026-10-02T11:00:00+00:00",
+    )
+    assert db.upsert_offer(
+        older,
+        content_campaign_id="late-old",
+        content_dry_run=True,
+    ) == offer_id
+
+    stored = db.get_offer(offer_id)
+    assert stored is not None
+    assert stored["title"] == "Produto atual"
+    assert stored["current_price_cents"] == 9000
+    assert stored["affiliate_url"] == "https://s.shopee.com.br/current"
+    assert stored["coupon"] == "ATUAL"
+    assert stored["collected_at"] == "2026-10-02T12:00:00+00:00"
+
+    history = db.rows(
+        "SELECT price_cents,observed_at FROM price_history WHERE offer_id=? ORDER BY observed_at",
+        (offer_id,),
+    )
+    assert [tuple(row) for row in history] == [
+        (12000, "2026-10-02T11:00:00+00:00"),
+        (9000, "2026-10-02T12:00:00+00:00"),
+    ]
+    jobs = db.rows(
+        "SELECT campaign_id,facts_fingerprint,status FROM content_jobs WHERE offer_id=?",
+        (offer_id,),
+    )
+    assert len(jobs) == 1
+    assert jobs[0]["campaign_id"] == "newer"
+    assert jobs[0]["facts_fingerprint"] == stored["content_fingerprint"]
+    assert jobs[0]["status"] == "PENDING"
+
+
 def test_content_job_survives_restart_immediately_after_ingestion(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     first_db = Database(settings.database_path)
