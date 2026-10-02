@@ -521,9 +521,15 @@ def test_offer_hub_search_and_page_require_conscious_click_and_escape_html(tmp_p
 def test_product_image_loader_accepts_only_approved_https_hosts() -> None:
     assert _approved_image_url("https://down-br.img.susercontent.com/product.jpg")
     assert _approved_image_url("https://cdn.shopee.com.br/product.jpg")
+    assert _approved_image_url("https://images.example/product.jpg", ("images.example",))
     assert not _approved_image_url("http://down-br.img.susercontent.com/product.jpg")
     assert not _approved_image_url("https://evil.example/product.jpg")
     assert not _approved_image_url("https://shopee.com.br.evil.example/product.jpg")
+    assert not _approved_image_url("https://127.0.0.1/product.jpg", ("127.0.0.1",))
+    assert not _approved_image_url("https://10.0.0.5/product.jpg", ("10.0.0.5",))
+    assert not _approved_image_url("https://localhost/product.jpg", ("localhost",))
+    assert not _approved_image_url("https://assets.local/product.jpg", ("assets.local",))
+    assert not _approved_image_url("https://images.example:8443/product.jpg", ("images.example",))
     assert _NoRedirect().redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1/private") is None
 
 
