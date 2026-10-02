@@ -65,6 +65,8 @@ class Pipeline:
             offer_data = asdict(offer)
             if merchant_key(offer_data) == "amazon":
                 raise ValueError("Amazon ingest bloqueado: aguarda aprovacao escrita e desenho de retencao")
+            if not str(offer.external_product_id or "").strip():
+                raise ComplianceError("external_product_id ausente")
             validate_offer(offer_data)
             identity = (
                 str(offer.affiliate_network).strip(),
