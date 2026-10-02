@@ -130,6 +130,19 @@ def test_shopee_adapter_declares_truthful_capabilities_and_normalizes(tmp_path: 
     }
 
 
+def test_shopee_adapter_ignores_malformed_optional_metrics(tmp_path: Path) -> None:
+    source = write_offer_csv(tmp_path / "offers.csv")
+    text = source.read_text(encoding="utf-8")
+    source.write_text(
+        text.replace("4.8,5000,20,", "invalid-rating,invalid-sales,invalid-rate,"),
+        encoding="utf-8",
+    )
+    offer = ShopeeManualAdapter().import_offers(source)[0]
+    assert offer.rating is None
+    assert offer.sales_count is None
+    assert offer.commission_rate is None
+
+
 def test_adapter_rejects_non_shopee_affiliate_url(tmp_path: Path) -> None:
     source = write_offer_csv(tmp_path / "offers.csv", affiliate_url="https://example.com/redirect")
     with pytest.raises(ValueError, match="oficial da Shopee"):
