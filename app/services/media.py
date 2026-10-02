@@ -231,6 +231,7 @@ def _product_panel(
     box: tuple[int, int, int, int],
     *,
     variant: str = "a",
+    product_scale: float = 1.0,
 ) -> None:
     x1, y1, x2, y2 = box
     draw = ImageDraw.Draw(canvas)
@@ -258,7 +259,11 @@ def _product_panel(
         )
         return
 
-    inner = (max(80, x2 - x1 - 80), max(80, y2 - y1 - 80))
+    scale = max(1.0, min(float(product_scale), 1.05))
+    inner = (
+        max(80, int((x2 - x1 - 80) * scale)),
+        max(80, int((y2 - y1 - 80) * scale)),
+    )
     fitted = ImageOps.contain(product, inner, method=Image.Resampling.LANCZOS)
     canvas.paste(fitted, (x1 + (x2 - x1 - fitted.width) // 2, y1 + (y2 - y1 - fitted.height) // 2))
 
@@ -273,6 +278,7 @@ def _card(
     disclosure: str = "PUBLICIDADE",
     role: str = "generic",
     variant: str = "a",
+    product_scale: float = 1.0,
 ) -> Image.Image:
     width, height = size
     vertical = height > width
@@ -305,6 +311,7 @@ def _card(
         product,
         (safe_x, panel_top, width - safe_x, panel_bottom),
         variant=variant,
+        product_scale=product_scale,
     )
 
     available = max(120, text_bottom - text_top)
@@ -420,7 +427,7 @@ class CreativeGenerator:
 
     def _output_dir(self, offer: dict[str, Any], campaign_id: str) -> Path:
         fingerprint = hashlib.sha256(
-            f"{offer['id']}:{offer['current_price_cents']}:{offer.get('coupon') or ''}:{campaign_id}:v2".encode()
+            f"{offer['id']}:{offer['current_price_cents']}:{offer.get('coupon') or ''}:{campaign_id}:v3".encode()
         ).hexdigest()[:12]
         output = self.root / f"{offer_slug(offer)}-{fingerprint}"
         output.mkdir(parents=True, exist_ok=True)
@@ -430,6 +437,102 @@ class CreativeGenerator:
     def _save(image: Image.Image, path: Path) -> Path:
         image.save(path, format="PNG", optimize=True)
         return path
+
+    @staticmethod
+    def _scene_secondary(role: str) -> str:
+        if role == "price":
+            return "Preço informado na última atualização"
+        if role == "benefit":
+            return "Confira as condições atuais"
+        if role == "cta":
+            return "Confira preço e disponibilidade no link"
+        return ""
+
+    def _animated_video_plan(
+        self,
+        *,
+        output: Path,
+        prefix: str,
+        title: str,
+        product: Image.Image | None,
+        script: tuple[dict[str, Any], ...],
+        duration_scale: float,
+        variant: str = "a",
+    ) -> tuple[tuple[Path, ...], tuple[float, ...], Path]:
+        """Gera poucos keyframes: zoom do produto, texto progressivo e fade entre cenas."""
+        root = output / ".video-keyframes" / prefix
+        root.mkdir(parents=True, exist_ok=True)
+
+        scenes: list[tuple[float, list[Image.Image]]] = []
+        steps = 6
+        for scene in script:
+            role = str(scene.get("role") or "generic")
+            primary = str(scene["text"])
+            secondary = self._scene_secondary(role)
+            duration = max(
+                0.1,
+                (float(scene["end"]) - float(scene["start"])) * duration_scale,
+            )
+            frames: list[Image.Image] = []
+            for step in range(steps):
+                progress = step / (steps - 1)
+                zoom = 1.0 + (0.035 * progress)
+                full = _card(
+                    (1080, 1920),
+                    title=title,
+                    primary=primary,
+                    secondary=secondary,
+                    product=product,
+                    role=role,
+                    variant=variant,
+                    product_scale=zoom,
+                )
+                if progress >= 1.0:
+                    frames.append(full)
+                    continue
+                base = _card(
+                    (1080, 1920),
+                    title=title,
+                    primary="",
+                    secondary="",
+                    product=product,
+                    role=role,
+                    variant=variant,
+                    product_scale=zoom,
+                )
+                # Texto conclui a entrada cedo e o restante da cena mantém
+                # apenas o zoom muito suave no produto.
+                text_alpha = min(1.0, progress / 0.65)
+                frames.append(Image.blend(base, full, text_alpha))
+            scenes.append((duration, frames))
+
+        paths: list[Path] = []
+        durations: list[float] = []
+        fade_steps = 3
+        for scene_index, (scene_duration, frames) in enumerate(scenes):
+            has_next = scene_index + 1 < len(scenes)
+            fade_duration = min(0.20, scene_duration * 0.12) if has_next else 0.0
+            body_duration = max(0.06, scene_duration - fade_duration)
+            frame_duration = body_duration / len(frames)
+
+            for frame_index, frame in enumerate(frames, start=1):
+                path = root / f"scene-{scene_index + 1:02d}-{frame_index:02d}.png"
+                self._save(frame, path)
+                paths.append(path)
+                durations.append(frame_duration)
+
+            if has_next and fade_duration > 0:
+                current = frames[-1]
+                next_start = scenes[scene_index + 1][1][0]
+                for fade_index in range(1, fade_steps + 1):
+                    alpha = fade_index / (fade_steps + 1)
+                    blended = Image.blend(current, next_start, alpha)
+                    path = root / f"fade-{scene_index + 1:02d}-{fade_index:02d}.png"
+                    self._save(blended, path)
+                    paths.append(path)
+                    durations.append(fade_duration / fade_steps)
+
+        return tuple(paths), tuple(durations), root
 
     def _video(self, frames: tuple[Path, ...], durations: tuple[float, ...], output: Path) -> VideoResult:
         executable = self.ffmpeg_path or shutil.which("ffmpeg")
@@ -510,13 +613,7 @@ class CreativeGenerator:
             rendered: list[Path] | list[Image.Image] = []
             for index, scene in enumerate(script, start=1):
                 role = str(scene.get("role") or "generic")
-                secondary = ""
-                if role == "price":
-                    secondary = "Preço informado na última atualização"
-                elif role == "benefit":
-                    secondary = "Confira as condições atuais"
-                elif role == "cta":
-                    secondary = "Confira preço e disponibilidade no link"
+                secondary = self._scene_secondary(role)
                 image = _card(
                     (1080, 1920),
                     title=title,
@@ -611,10 +708,34 @@ class CreativeGenerator:
             self._save(tiktok_ab, output / "ab-tiktok-hook.png"),
         )
 
-        reel_durations = tuple(max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale) for s in reel_script)
-        tiktok_durations = tuple(max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale) for s in tiktok_script)
-        reel_video = self._video(reel_frames, reel_durations, output / "instagram-reel.mp4")
-        tiktok_video = self._video(tiktok_frames, tiktok_durations, output / "tiktok-draft.mp4")
+        reel_video_frames, reel_durations, reel_keyframe_root = self._animated_video_plan(
+            output=output,
+            prefix="instagram-reel",
+            title=title,
+            product=product,
+            script=reel_script,
+            duration_scale=duration_scale,
+        )
+        tiktok_video_frames, tiktok_durations, tiktok_keyframe_root = self._animated_video_plan(
+            output=output,
+            prefix="tiktok",
+            title=title,
+            product=product,
+            script=tiktok_script,
+            duration_scale=duration_scale,
+        )
+        try:
+            reel_video = self._video(reel_video_frames, reel_durations, output / "instagram-reel.mp4")
+            tiktok_video = self._video(tiktok_video_frames, tiktok_durations, output / "tiktok-draft.mp4")
+        finally:
+            shutil.rmtree(reel_keyframe_root, ignore_errors=True)
+            shutil.rmtree(tiktok_keyframe_root, ignore_errors=True)
+            keyframe_parent = output / ".video-keyframes"
+            try:
+                keyframe_parent.rmdir()
+            except OSError:
+                pass
+
         return CreativeAssets(
             root=output,
             feed=feed,
