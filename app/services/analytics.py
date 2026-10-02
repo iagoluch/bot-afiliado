@@ -63,8 +63,11 @@ def _grouped(db: Database, source: str, dimension: str) -> list[dict[str, Any]]:
         sql = f"SELECT {expression} segment, COUNT(*) clicks FROM clicks c JOIN offers o ON o.id=c.offer_id GROUP BY segment"
     elif source == "conversions":
         sql = f"""SELECT {expression} segment, COUNT(*) conversions,
+            SUM(CASE WHEN v.click_id IS NOT NULL THEN 1 ELSE 0 END) attributed_conversions,
             COALESCE(SUM(v.value_cents),0) revenue_cents,
-            COALESCE(SUM(v.commission_cents),0) commission_cents
+            COALESCE(SUM(v.commission_cents),0) commission_cents,
+            COALESCE(SUM(CASE WHEN v.click_id IS NOT NULL THEN v.commission_cents ELSE 0 END),0)
+                attributed_commission_cents
             FROM conversions v LEFT JOIN clicks c ON c.click_id=v.click_id
             LEFT JOIN offers o ON o.id=COALESCE(v.offer_id,c.offer_id)
             WHERE v.status IN ('APPROVED','PAID') GROUP BY segment"""
@@ -93,22 +96,25 @@ def analytics_breakdown(db: Database, dimension: str) -> list[dict[str, Any]]:
                 "clicks": 0,
                 "impressions": 0,
                 "conversions": 0,
+                "attributed_conversions": 0,
                 "publications": 0,
                 "revenue_cents": 0,
                 "commission_cents": 0,
+                "attributed_commission_cents": 0,
             }).update(row)
     results: list[dict[str, Any]] = []
     for item in merged.values():
         clicks = int(item["clicks"])
         impressions = int(item["impressions"])
-        conversions = int(item["conversions"])
+        attributed_conversions = int(item["attributed_conversions"])
         publications = int(item["publications"])
+        attributed_commission = int(item["attributed_commission_cents"])
         commission = int(item["commission_cents"])
         revenue = int(item["revenue_cents"])
         item.update({
             "ctr": round(clicks / impressions * 100, 2) if impressions else None,
-            "cvr": round(conversions / clicks * 100, 2) if clicks else None,
-            "epc_cents": round(commission / clicks, 2) if clicks else None,
+            "cvr": round(attributed_conversions / clicks * 100, 2) if clicks else None,
+            "epc_cents": round(attributed_commission / clicks, 2) if clicks else None,
             "revenue_per_post_cents": round(revenue / publications, 2) if publications else None,
             "commission_per_post_cents": round(commission / publications, 2) if publications else None,
         })
