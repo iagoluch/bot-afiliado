@@ -30,9 +30,9 @@ mkdir -p "$REPO_DIR/data" "$REPO_DIR/data/creatives" "$REPO_DIR/logs"
 
 if [[ ! -f "$REPO_DIR/.env" ]]; then
     cp "$REPO_DIR/.env.example" "$REPO_DIR/.env"
-    chmod 600 "$REPO_DIR/.env"
     printf 'Criado %s com DRY_RUN=true. Ajuste somente quando necessario.\n' "$REPO_DIR/.env"
 fi
+chmod 600 "$REPO_DIR/.env"
 
 printf 'IA opcional: configure CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN no .env; Granite local permanece desligado por padrao.\n'
 
