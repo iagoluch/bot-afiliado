@@ -279,6 +279,9 @@ def test_runtime_status_and_health_details_expose_only_safe_operational_data(
     assert status["database"] == "ok"
     assert status["worker"]["status"] == "running"
     assert status["queue_depth"] == 0
+    assert status["publish_queue_depth"] == 0
+    assert status["social_queue_depth"] == 0
+    assert status["content_job_depth"] == 0
     assert status["ai"] == {
         "remote_provider": "cloudflare",
         "remote_model": "@cf/google/gemma-4-26b-a4b-it",
@@ -300,6 +303,113 @@ def test_runtime_status_and_health_details_expose_only_safe_operational_data(
     assert client.get("/health").json() == {"status": "ok", "dry_run": True}
     detailed = client.get("/health?details=true").json()
     assert detailed["runtime"] == status
+
+
+def test_runtime_status_separates_manual_social_and_automatic_work(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    offer = ShopeeManualAdapter().import_offers(ROOT / "examples" / "shopee_offers.sample.csv")[0]
+    offer_id = db.upsert_offer(
+        offer,
+        content_campaign_id="runtime-depths",
+        content_dry_run=True,
+    )
+    content_id = db.add_content(
+        offer_id,
+        "instagram",
+        "#publi",
+        format="feed",
+        campaign_id="runtime-depths",
+    )
+    db.enqueue_social(
+        offer_id,
+        content_id,
+        "instagram",
+        "feed",
+        "READY_FOR_PUBLISH",
+        "Revisar conteudo",
+    )
+
+    status = runtime_status(db, settings, ffmpeg_probe=lambda _settings: False)
+
+    assert status["publish_queue_depth"] == 0
+    assert status["social_queue_depth"] == 1
+    assert status["content_job_depth"] == 1
+    assert status["queue_depth"] == 2
+
+
+def test_p1_cli_commands_record_operation_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_path = tmp_path / "p1-events.db"
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("AI_REMOTE_PROVIDER", "none")
+    monkeypatch.setenv("AI_LOCAL_ENABLED", "false")
+
+    class CliPipeline:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def ingest_source(self, _source, _adapter):
+            return [1, 2]
+
+    class CliP1:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def generate_offer(self, offer_id, _campaign):
+            return {
+                "offer_id": offer_id,
+                "status": "GENERATED",
+                "packages": [{"queue_id": 11}, {"queue_id": None}],
+            }
+
+        def run(self, _offer_ids, _campaign):
+            return {
+                "offers": [
+                    {"offer_id": 1, "status": "GENERATED", "packages": [{"queue_id": 12}]},
+                    {"offer_id": 2, "status": "REJECTED_BY_CURATION", "packages": []},
+                ],
+                "external_publications": 0,
+            }
+
+    monkeypatch.setattr(cli, "Pipeline", CliPipeline)
+    monkeypatch.setattr(cli, "P1Pipeline", CliP1)
+
+    monkeypatch.setattr(sys, "argv", ["app.cli", "p1-offer", "1", "--campaign", "event-offer"])
+    cli.main()
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["app.cli", "p1-cycle", "ignored.csv", "--campaign", "event-cycle", "--adapter", "shopee"],
+    )
+    cli.main()
+    capsys.readouterr()
+
+    db = Database(database_path)
+    events = [dict(row) for row in db.list_operation_events(10)]
+    assert len(events) == 2
+
+    cycle_event, offer_event = events
+    assert cycle_event["event"] == "content"
+    assert cycle_event["adapter"] == "shopee"
+    assert cycle_event["status"] == "PARTIAL"
+    assert cycle_event["offers"] == 2
+    assert cycle_event["queued"] == 1
+    assert cycle_event["processed"] == 1
+
+    assert offer_event["event"] == "content"
+    assert offer_event["adapter"] == "p1"
+    assert offer_event["status"] == "GENERATED"
+    assert offer_event["offers"] == 1
+    assert offer_event["queued"] == 1
+    assert offer_event["processed"] == 2
 
 
 def test_runtime_status_cli_uses_safe_status_contract(
