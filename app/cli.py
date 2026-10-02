@@ -127,8 +127,35 @@ def main() -> None:
     elif args.command == "p1-cycle":
         offer_ids = pipeline.ingest_source(args.source, args.adapter)
         result = P1Pipeline(db, settings).run(offer_ids, args.campaign)
+        generated = result.get("offers") or []
+        packages = [
+            package
+            for offer in generated
+            for package in (offer.get("packages") or [])
+        ]
+        _record_operation(
+            db,
+            "dry" if settings.dry_run else "real",
+            args.adapter,
+            "content",
+            "COMPLETED" if generated and all(offer.get("status") == "GENERATED" for offer in generated) else "PARTIAL",
+            offers=len(generated),
+            queued=sum(1 for package in packages if package.get("queue_id") is not None),
+            processed=len(packages),
+        )
     elif args.command == "p1-offer":
         result = P1Pipeline(db, settings).generate_offer(args.offer_id, args.campaign)
+        packages = result.get("packages") or []
+        _record_operation(
+            db,
+            "dry" if settings.dry_run else "real",
+            "p1",
+            "content",
+            str(result.get("status", "UNKNOWN")),
+            offers=1,
+            queued=sum(1 for package in packages if package.get("queue_id") is not None),
+            processed=len(packages),
+        )
     elif args.command == "import-conversions":
         result = {"imported": import_conversion_csv(db, args.source)}
     elif args.command == "scheduler-once":
