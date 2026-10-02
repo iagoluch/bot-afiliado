@@ -127,11 +127,12 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
-            "frame-ancestors 'none'; form-action 'self'"
-        )
+        if request.url.path not in {"/docs", "/redoc"}:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+                "frame-ancestors 'none'; form-action 'self'"
+            )
         if not request.url.path.startswith("/media/"):
             response.headers["Cache-Control"] = "no-store"
         return response
