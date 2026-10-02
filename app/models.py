@@ -6,6 +6,9 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 
+MAX_SQLITE_INTEGER = (1 << 63) - 1
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -52,7 +55,10 @@ def money_to_cents(value: str | int | float | Decimal | None) -> int | None:
         raise ValueError(f"valor monetario invalido: {value!r}")
     if amount < 0:
         raise ValueError("valor monetario nao pode ser negativo")
-    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    if cents > MAX_SQLITE_INTEGER:
+        raise ValueError("valor monetario excede limite de armazenamento")
+    return cents
 
 
 @dataclass(slots=True)
