@@ -16,7 +16,7 @@ from app.services.compliance import ComplianceError, merchant_key, validate_cont
 from app.services.content import telegram_creative_id, telegram_message, telegram_tracking_url
 from app.services.curation import score_offer, verified_offer_data
 from app.services.dedup import is_in_cooldown
-from app.services.telegram import TelegramClient, TelegramDeliveryUncertain, TelegramRateLimit
+from app.services.telegram import MAX_MESSAGE_CHARS, TelegramClient, TelegramDeliveryUncertain, TelegramRateLimit
 
 
 class Pipeline:
@@ -107,7 +107,14 @@ class Pipeline:
             key = hashlib.sha256(raw_key.encode()).hexdigest()
             tracking_url = telegram_tracking_url(self.settings.public_base_url, offer_id, campaign_id, key)
             body = telegram_message(offer, tracking_url)
-            validate_content(body, allow_http=self.settings.dry_run)
+            try:
+                validate_content(
+                    body,
+                    allow_http=self.settings.dry_run,
+                    max_chars=MAX_MESSAGE_CHARS,
+                )
+            except ComplianceError:
+                continue
             content_id = self.db.add_content(offer_id, "telegram", body)
             queue_ids.append(self.db.enqueue(
                 offer_id,
@@ -140,7 +147,11 @@ class Pipeline:
                 self.settings.public_base_url, queue["offer_id"], queue["campaign_id"],
             )
             current_body = telegram_message(offer, tracking_url)
-            validate_content(current_body, allow_http=self.settings.dry_run)
+            validate_content(
+                current_body,
+                allow_http=self.settings.dry_run,
+                max_chars=MAX_MESSAGE_CHARS,
+            )
             reason_code = "CONTENT_CHANGED" if (
                 current_body != queue["body"] or offer["affiliate_url"] != queue["affiliate_url_snapshot"]
             ) else None
