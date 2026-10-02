@@ -348,6 +348,9 @@ class Database:
         content_campaign_id: str | None = None,
         content_dry_run: bool | None = None,
     ) -> int:
+        for field in ("merchant", "affiliate_network", "external_product_id", "title"):
+            if not str(getattr(offer, field) or "").strip():
+                raise ValueError(f"{field} da oferta e obrigatorio")
         now = utc_now()
         offer_values = {field: getattr(offer, field) for field in (
                 "merchant", "affiliate_network", "external_product_id", "title", "description",
