@@ -59,12 +59,16 @@ class Pipeline:
         raise ValueError(f"adapter desconhecido: {name}")
 
     def ingest_offers(self, offers: list[Offer], *, content_campaign_id: str | None = None) -> list[int]:
-        ids: list[int] = []
+        validated: list[Offer] = []
         for offer in offers:
             offer_data = asdict(offer)
             if merchant_key(offer_data) == "amazon":
                 raise ValueError("Amazon ingest bloqueado: aguarda aprovacao escrita e desenho de retencao")
             validate_offer(offer_data)
+            validated.append(offer)
+
+        ids: list[int] = []
+        for offer in validated:
             # Quando há campanha, o job P1 nasce na mesma transação do upsert.
             # Assim uma queda após a ingestão nunca perde o trabalho de conteúdo.
             ids.append(self.db.upsert_offer(
