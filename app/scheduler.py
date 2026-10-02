@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 
 from app.db import Database
@@ -8,6 +9,17 @@ from app.services.pipeline import Pipeline
 
 
 DEFAULT_SLOTS = ("07:00", "10:00", "13:00", "16:00", "19:00", "22:00")
+
+try:
+    SCHEDULER_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+except ZoneInfoNotFoundError:
+    # Fallback sem dependencia externa para ambientes sem base IANA instalada.
+    # Brasilia nao usa horario de verao atualmente.
+    SCHEDULER_TIMEZONE = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
+
+
+def scheduler_now() -> datetime:
+    return datetime.now(SCHEDULER_TIMEZONE)
 
 
 def due_slot(now: datetime, slots: tuple[str, ...] = DEFAULT_SLOTS, tolerance_minutes: int = 5) -> str | None:
