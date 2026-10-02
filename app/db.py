@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from app.models import Offer, normalize_utc_timestamp, utc_now
+from app.models import MAX_SQLITE_INTEGER, Offer, normalize_utc_timestamp, utc_now
 
 
 MAX_CONTENT_JOB_ATTEMPTS = 5
@@ -1138,6 +1138,8 @@ class Database:
                 raise ValueError(f"{field} da conversao deve ser inteiro") from exc
             if normalized[field] < 0:
                 raise ValueError(f"{field} da conversao nao pode ser negativo")
+            if normalized[field] > MAX_SQLITE_INTEGER:
+                raise ValueError(f"{field} da conversao excede limite de armazenamento")
         if normalized.get("offer_id") is not None:
             normalized["offer_id"] = int(normalized["offer_id"])
 
