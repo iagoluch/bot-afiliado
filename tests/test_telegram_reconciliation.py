@@ -15,6 +15,7 @@ from app.services.content import telegram_message, telegram_tracking_url
 from app.services.curation import verified_offer_data
 from app.services.pipeline import Pipeline
 from app.services.telegram import TelegramClient, TelegramDeliveryUncertain, TelegramResult
+from app.worker import WorkerLock
 
 
 def _queued_offer(tmp_path):
@@ -100,6 +101,37 @@ def test_ambiguous_delivery_stays_processing_and_can_be_confirmed_published(tmp_
     assert pipeline.process_one() is None
     with pytest.raises(ValueError, match="PROCESSING"):
         db.reconcile_telegram_queue(queue_id, published_message_id="78", confirmed_not_published=False)
+
+
+def test_cli_reconciliation_refuses_to_race_an_active_worker(
+    tmp_path, monkeypatch,
+) -> None:
+    db, _settings, queue_id = _queued_offer(tmp_path)
+    db.claim_due(dry_run=False)
+    lock = WorkerLock(db.path.with_suffix(".worker.lock"))
+    lock.acquire()
+    try:
+        monkeypatch.setenv("DATABASE_PATH", str(db.path))
+        monkeypatch.setenv("DRY_RUN", "true")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "app.cli",
+                "telegram-reconcile",
+                str(queue_id),
+                "--confirmed-not-published",
+                "--confirm-worker-stopped",
+            ],
+        )
+        with pytest.raises(RuntimeError, match="worker realmente parado"):
+            main()
+    finally:
+        lock.release()
+
+    row = db.rows("SELECT status FROM publish_queue WHERE id=?", (queue_id,))[0]
+    assert row["status"] == "PROCESSING"
+    assert db.rows("SELECT id FROM publications") == []
 
 
 def test_confirmed_absence_discards_queue_and_requires_fresh_cycle(tmp_path) -> None:

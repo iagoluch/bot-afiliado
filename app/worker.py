@@ -147,6 +147,13 @@ class WorkerLock:
         self.release()
 
 
+def worker_lock_path(settings: Settings) -> Path:
+    return Path(
+        os.getenv("WORKER_LOCK_PATH", "").strip()
+        or settings.database_path.with_suffix(".worker.lock")
+    )
+
+
 def _ffmpeg_available(settings: Settings) -> bool:
     configured = settings.ffmpeg_path
     if configured:
@@ -476,7 +483,7 @@ def main() -> None:
     if not source.is_file():
         raise FileNotFoundError(f"fonte do worker nao encontrada: {source}")
 
-    lock_path = Path(os.getenv("WORKER_LOCK_PATH", "").strip() or settings.database_path.with_suffix(".worker.lock"))
+    lock_path = worker_lock_path(settings)
     try:
         with WorkerLock(lock_path):
             db = Database(settings.database_path)

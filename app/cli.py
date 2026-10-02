@@ -15,7 +15,7 @@ from app.services.llm import copy_preview
 from app.services.instagram_graph import InstagramReelPublisher
 from app.services.pipeline import Pipeline
 from app.services.p1 import P1Pipeline
-from app.worker import runtime_status
+from app.worker import WorkerAlreadyRunning, WorkerLock, runtime_status, worker_lock_path
 
 
 def _record_operation(db: Database, mode: str, adapter: str, event: str, status: str, **counts: int | str | None) -> None:
@@ -167,11 +167,17 @@ def main() -> None:
     elif args.command == "telegram-processing":
         result = [dict(row) for row in db.list_processing_telegram_queue(args.limit)]
     elif args.command == "telegram-reconcile":
-        result = db.reconcile_telegram_queue(
-            args.queue_id,
-            published_message_id=args.published_message_id,
-            confirmed_not_published=args.confirmed_not_published,
-        )
+        try:
+            with WorkerLock(worker_lock_path(settings)):
+                result = db.reconcile_telegram_queue(
+                    args.queue_id,
+                    published_message_id=args.published_message_id,
+                    confirmed_not_published=args.confirmed_not_published,
+                )
+        except WorkerAlreadyRunning as exc:
+            raise RuntimeError(
+                "reconciliacao Telegram exige o worker realmente parado"
+            ) from exc
     elif args.command == "import-offers":
         if args.adapter == "admitad":
             if not args.merchant_name:
