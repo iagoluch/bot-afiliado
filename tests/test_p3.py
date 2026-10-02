@@ -120,10 +120,17 @@ def test_dynamic_web_responses_include_defensive_security_headers(tmp_path: Path
     assert rejected.headers["x-content-type-options"] == "nosniff"
     assert rejected.headers["cache-control"] == "no-store"
 
-    docs = client.get("/docs")
+    docs_rejected = client.get("/docs")
+    assert docs_rejected.status_code == 401
+    assert docs_rejected.headers["x-content-type-options"] == "nosniff"
+
+    docs = client.get("/docs", headers=auth("secret"))
     assert docs.status_code == 200
     assert "content-security-policy" not in docs.headers
     assert docs.headers["x-content-type-options"] == "nosniff"
+
+    assert client.get("/openapi.json").status_code == 401
+    assert client.get("/openapi.json", headers=auth("secret")).status_code == 200
 
 
 def test_admin_basic_auth_public_routes_and_secret_redaction(tmp_path: Path) -> None:
