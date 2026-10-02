@@ -141,9 +141,9 @@ def validate_offer(offer: dict) -> None:
             offer.get("current_price_cents") or 0,
             "preco atual",
         )
-    except ValueError:
+    except ValueError as exc:
         current = 0
-        errors.append("preco atual invalido")
+        errors.append(str(exc))
     if current <= 0 and "preco atual invalido" not in errors:
         errors.append("preco atual precisa ser positivo")
 
@@ -151,8 +151,8 @@ def validate_offer(offer: dict) -> None:
     if original is not None:
         try:
             original_value = _canonical_integer(original, "preco anterior")
-        except ValueError:
-            errors.append("preco anterior invalido")
+        except ValueError as exc:
+            errors.append(str(exc))
         else:
             if original_value <= 0:
                 errors.append("preco anterior precisa ser positivo")
@@ -174,8 +174,8 @@ def validate_offer(offer: dict) -> None:
             continue
         try:
             integer = _canonical_integer(value, label)
-        except ValueError:
-            errors.append(f"{label} invalido")
+        except ValueError as exc:
+            errors.append(str(exc))
             continue
         if integer < 0:
             errors.append(f"{label} fora do intervalo permitido")
