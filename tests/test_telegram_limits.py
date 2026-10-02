@@ -9,7 +9,7 @@ from app.models import Offer
 from app.services.content import telegram_message, telegram_tracking_url
 from app.services.curation import verified_offer_data
 from app.services.pipeline import Pipeline
-from app.services.telegram import TelegramClient, TelegramRateLimit
+from app.services.telegram import MAX_MESSAGE_CHARS, TelegramAPIError, TelegramClient, TelegramRateLimit
 
 
 class _Response:
@@ -21,6 +21,25 @@ class _Response:
 
     def read(self, size: int = -1) -> bytes:
         return b'{"ok":true,"result":{"message_id":77}}'[:size]
+
+
+def test_telegram_rejects_invalid_message_lengths_before_network() -> None:
+    calls = 0
+
+    def opener(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return _Response()
+
+    client = TelegramClient("secret", "@channel", dry_run=False, opener=opener)
+
+    for text in ("", "x" * (MAX_MESSAGE_CHARS + 1)):
+        with pytest.raises(TelegramAPIError, match="entre 1 e 4096"):
+            client.send_message(text)
+
+    assert calls == 0
+    assert client.send_message("x" * MAX_MESSAGE_CHARS).message_id == "77"
+    assert calls == 1
 
 
 def test_real_telegram_spaces_messages_without_delaying_dry_run() -> None:
@@ -44,6 +63,20 @@ def test_real_telegram_spaces_messages_without_delaying_dry_run() -> None:
     dry.send_message("#publi\nA")
     dry.send_message("#publi\nB")
     assert sleeps == [pytest.approx(1.05)]
+
+
+def test_telegram_request_uses_current_minimal_send_message_contract() -> None:
+    captured: dict[str, str] = {}
+
+    def opener(request, timeout):
+        captured["body"] = request.data.decode("utf-8")
+        return _Response()
+
+    TelegramClient("secret", "@channel", dry_run=False, opener=opener).send_message("#publi\nOferta")
+
+    assert "chat_id=%40channel" in captured["body"]
+    assert "text=%23publi%0AOferta" in captured["body"]
+    assert "disable_web_page_preview" not in captured["body"]
 
 
 def test_telegram_429_uses_retry_after_without_exposing_token() -> None:
