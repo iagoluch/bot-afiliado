@@ -388,6 +388,12 @@ def safe_hook(
     """Generate a product-aware but fact-constrained hook and fail closed to a template."""
     settings = settings or Settings.from_env()
     template = TemplateProvider()
+    if isinstance(provider, TemplateProvider):
+        return (
+            template.suggest_hook(str(offer.get("title") or ""), str(offer.get("category") or ""), channel),
+            "template",
+            "AI_PROVIDER_NOT_CONFIGURED",
+        )
     candidates = (provider,) if provider is not None else providers_from_env(settings)
     if not candidates:
         return (
