@@ -392,6 +392,29 @@ def test_offer_batch_rejects_missing_external_identity_before_any_write(tmp_path
     assert db.rows("SELECT id FROM offers") == []
 
 
+def test_offer_batch_rejects_duplicate_identity_before_any_write(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    first = Offer(
+        merchant="Shopee",
+        affiliate_network="Shopee Afiliados",
+        external_product_id="duplicate-batch",
+        title="Primeira versao",
+        current_price_cents=10000,
+        source_url="https://shopee.com.br/product/1/duplicate-batch",
+        affiliate_url="https://s.shopee.com.br/duplicate-batch",
+        stock_status="IN_STOCK",
+    )
+    second = replace(first, title="Segunda versao", current_price_cents=9000)
+
+    with pytest.raises(ValueError, match="identidade de oferta duplicada"):
+        Pipeline(db, settings).ingest_offers([first, second])
+
+    assert db.rows("SELECT id FROM offers") == []
+    assert db.rows("SELECT id FROM price_history") == []
+
+
 def test_full_pipeline_dry_run_is_simulated_and_does_not_create_cooldown(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
