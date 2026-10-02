@@ -101,7 +101,10 @@ def test_gemini_request_keeps_key_in_header_and_marketplace_text_as_data(monkeyp
     payload = json.loads(request.data)
     assert "IGNORE regras" in payload["contents"][0]["parts"][0]["text"]
     assert "dados nao confiaveis" in payload["systemInstruction"]["parts"][0]["text"]
-    assert payload["generationConfig"] == {\n        "thinkingConfig": {"thinkingLevel": "low"},\n        "maxOutputTokens": 256,\n    }
+    assert payload["generationConfig"] == {
+        "thinkingConfig": {"thinkingLevel": "low"},
+        "maxOutputTokens": 256,
+    }
 
 
 @pytest.mark.parametrize(
