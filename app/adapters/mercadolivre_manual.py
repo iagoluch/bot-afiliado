@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import csv
-import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from app.adapters.base import AffiliateAdapter, Capability, CapabilityStatus
+from app.adapters.local_files import read_local_records
 from app.models import Offer, expires_after, money_to_cents, utc_now
 
 
@@ -26,14 +25,7 @@ class MercadoLivreManualAdapter(AffiliateAdapter):
     }
 
     def import_offers(self, path: Path) -> list[Offer]:
-        if path.suffix.lower() == ".csv":
-            with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                records = list(csv.DictReader(handle))
-        elif path.suffix.lower() == ".json":
-            data = json.loads(path.read_text(encoding="utf-8"))
-            records = data if isinstance(data, list) else data.get("offers", [])
-        else:
-            raise ValueError("formato Mercado Livre aceito: .csv ou .json")
+        records = read_local_records(path, label="Mercado Livre")
         if not records:
             raise ValueError("arquivo Mercado Livre nao contem ofertas")
         return [self._normalize(record) for record in records]
