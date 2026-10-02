@@ -1118,7 +1118,7 @@ class Database:
             simulations = int(connection.execute("SELECT COUNT(*) FROM publications WHERE dry_run=1").fetchone()[0])
             conversions = connection.execute(
                 """SELECT COUNT(*) count,
-                          SUM(CASE WHEN click_id IS NOT NULL THEN 1 ELSE 0 END) attributed_count,
+                          COALESCE(SUM(CASE WHEN click_id IS NOT NULL THEN 1 ELSE 0 END),0) attributed_count,
                           COALESCE(SUM(value_cents),0) revenue,
                           COALESCE(SUM(commission_cents),0) commission,
                           COALESCE(SUM(CASE WHEN click_id IS NOT NULL THEN commission_cents ELSE 0 END),0)
