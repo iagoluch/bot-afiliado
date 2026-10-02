@@ -206,6 +206,9 @@ def test_granite_is_offline_bounded_and_rejects_fabricated_claims(
     monkeypatch.setattr(subprocess, "run", good_run)
     monkeypatch.setenv("HF_TOKEN", "nao-herdar")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "nao-herdar")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "telegram-nao-herdar")
+    monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "instagram-nao-herdar")
+    monkeypatch.setenv("AMAZON_CREATORS_CLIENT_SECRET", "amazon-nao-herdar")
     provider = GraniteProvider(cli, model, timeout_seconds=17)
     draft = copy_preview(_offer(), "instagram_story", _settings(tmp_path), provider=provider)
     assert draft["source"] == "granite"
@@ -216,6 +219,9 @@ def test_granite_is_offline_bounded_and_rejects_fabricated_claims(
     assert calls[0]["timeout"] == 17
     assert "HF_TOKEN" not in calls[0]["env"]
     assert "CLOUDFLARE_API_TOKEN" not in calls[0]["env"]
+    assert "TELEGRAM_BOT_TOKEN" not in calls[0]["env"]
+    assert "INSTAGRAM_ACCESS_TOKEN" not in calls[0]["env"]
+    assert "AMAZON_CREATORS_CLIENT_SECRET" not in calls[0]["env"]
 
     monkeypatch.setattr(
         subprocess,
