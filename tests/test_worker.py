@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app import cli
 from app.adapters.shopee_manual import ShopeeManualAdapter
 from app.config import Settings
-from app.db import Database
+from app.db import Database, MAX_CONTENT_JOB_ATTEMPTS
 from app.scheduler import run_tick
 from app.services.llm import TemplateProvider
 from app.services.analytics import analytics_breakdown
@@ -190,6 +190,24 @@ def test_cycle_generates_content_sequentially_and_isolates_offer_failure(tmp_pat
     ]
     jobs = db.rows("SELECT offer_id,status FROM content_jobs ORDER BY id")
     assert [(row["offer_id"], row["status"]) for row in jobs] == [(first, "FAILED"), (second, "COMPLETED")]
+
+
+def test_content_job_retries_stop_at_bounded_attempt_limit(tmp_path: Path) -> None:
+    db = Database(tmp_path / "bounded-content.db")
+    db.init()
+    offer = ShopeeManualAdapter().import_offers(ROOT / "examples" / "shopee_offers.sample.csv")[0]
+    db.upsert_offer(offer, content_campaign_id="bounded-retry", content_dry_run=True)
+
+    for _ in range(MAX_CONTENT_JOB_ATTEMPTS):
+        job = db.claim_content_job(dry_run=True)
+        assert job is not None
+        db.fail_content_job(int(job["id"]), "ValueError", "1970-01-01T00:00:00+00:00")
+
+    assert db.claim_content_job(dry_run=True) is None
+    row = db.rows("SELECT status,attempts,error_type FROM content_jobs")[0]
+    assert row["status"] == "FAILED"
+    assert row["attempts"] == MAX_CONTENT_JOB_ATTEMPTS
+    assert row["error_type"] == "ValueError"
 
 
 def test_sqlite_locked_retry_is_bounded_and_uses_backoff() -> None:
