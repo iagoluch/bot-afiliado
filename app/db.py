@@ -540,6 +540,18 @@ class Database:
     ) -> int:
         now = utc_now()
         with self.connect() as connection:
+            content = connection.execute(
+                "SELECT offer_id,channel,format FROM content_packages WHERE id=?",
+                (content_id,),
+            ).fetchone()
+            if content is None:
+                raise ValueError("pacote de conteudo inexistente para fila social")
+            if (
+                int(content["offer_id"]) != int(offer_id)
+                or str(content["channel"]) != channel
+                or str(content["format"]) != format
+            ):
+                raise ValueError("fila social nao corresponde ao pacote de conteudo")
             connection.execute(
                 """INSERT INTO social_queue(
                        offer_id,content_package_id,channel,format,status,required_action,created_at,updated_at
@@ -726,6 +738,14 @@ class Database:
             offer = connection.execute("SELECT affiliate_url FROM offers WHERE id=?", (offer_id,)).fetchone()
             if offer is None:
                 raise ValueError("oferta inexistente para fila")
+            content = connection.execute(
+                "SELECT offer_id,channel FROM content_packages WHERE id=?",
+                (content_id,),
+            ).fetchone()
+            if content is None:
+                raise ValueError("pacote de conteudo inexistente para fila")
+            if int(content["offer_id"]) != int(offer_id) or str(content["channel"]) != channel:
+                raise ValueError("fila de publicacao nao corresponde ao pacote de conteudo")
             connection.execute(
                 "INSERT OR IGNORE INTO publish_queue(offer_id,content_package_id,channel,campaign_id,creative_id,idempotency_key,affiliate_url_snapshot,dry_run,status,available_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'PENDING',?,?,?)",
                 (offer_id, content_id, channel, campaign_id, creative_id, idempotency_key, offer["affiliate_url"], int(dry_run), now, now, now),
