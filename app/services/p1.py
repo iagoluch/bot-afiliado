@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from app.config import Settings
+from app.config import Settings, validate_public_base_url
 from app.db import Database
 from app.services.compliance import distribution_review, merchant_key, validate_content, validate_offer
 from app.services.content import telegram_tracking_url
@@ -28,6 +28,7 @@ class P1Pipeline:
         self, db: Database, settings: Settings, generator: CreativeGenerator | None = None,
         *, provider: LLMProvider | None = None,
     ):
+        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
         self.db = db
         self.settings = settings
         self.provider = provider
