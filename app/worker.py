@@ -197,7 +197,11 @@ def runtime_status(
     except sqlite3.Error:
         database_status = "unavailable"
 
-    remote_configured = settings.ai_remote_provider == "gemini" and bool(settings.gemini_api_key)
+    remote_configured = (
+        settings.ai_remote_provider == "cloudflare"
+        and bool(settings.cloudflare_account_id)
+        and bool(settings.cloudflare_api_token)
+    )
     local_configured = (
         settings.ai_local_enabled
         and bool(settings.granite_cli_path)
@@ -209,7 +213,7 @@ def runtime_status(
         "queue_depth": queue_depth,
         "ai": {
             "remote_provider": settings.ai_remote_provider if remote_configured else None,
-            "remote_model": settings.gemini_model if remote_configured else None,
+            "remote_model": settings.cloudflare_ai_model if remote_configured else None,
             "remote_configured": remote_configured,
             "local_provider": "granite" if local_configured else None,
             "local_enabled": settings.ai_local_enabled,
