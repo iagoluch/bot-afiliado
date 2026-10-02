@@ -992,20 +992,40 @@ class Database:
             if cursor.rowcount != 1:
                 raise ValueError("job de conteudo nao esta em processamento")
 
-    def queue_depth(self, *, dry_run: bool) -> int:
-        """Conta trabalho ainda não concluído do modo atual, inclusive reconciliação."""
+    def queue_depths(self, *, dry_run: bool) -> dict[str, int]:
+        """Conta separadamente trabalho ativo de publicação, revisão social e conteúdo."""
         with self.connect() as connection:
             publication = connection.execute(
                 """SELECT COUNT(*) AS count FROM publish_queue
                    WHERE dry_run=? AND status IN ('PENDING','FAILED','PROCESSING')""",
                 (int(dry_run),),
             ).fetchone()
+            social = connection.execute(
+                """SELECT COUNT(*) AS count FROM social_queue
+                   WHERE status IN (
+                       'READY_FOR_PUBLISH','ASSET_PENDING',
+                       'PENDING_POLICY_REVIEW','PENDING_MERCHANT_REVIEW'
+                   )"""
+            ).fetchone()
             content = connection.execute(
                 """SELECT COUNT(*) AS count FROM content_jobs
-                   WHERE dry_run=? AND status NOT IN ('COMPLETED','SUPERSEDED')""",
-                (int(dry_run),),
+                   WHERE dry_run=?
+                     AND (
+                         status IN ('PENDING','PROCESSING')
+                         OR (status='FAILED' AND attempts<?)
+                     )""",
+                (int(dry_run), MAX_CONTENT_JOB_ATTEMPTS),
             ).fetchone()
-            return int(publication["count"]) + int(content["count"])
+            return {
+                "publish_queue_depth": int(publication["count"]),
+                "social_queue_depth": int(social["count"]),
+                "content_job_depth": int(content["count"]),
+            }
+
+    def queue_depth(self, *, dry_run: bool) -> int:
+        """Compatibilidade: profundidade automática, sem a fila social de revisão manual."""
+        depths = self.queue_depths(dry_run=dry_run)
+        return depths["publish_queue_depth"] + depths["content_job_depth"]
 
     def publication_for_key(self, idempotency_key: str) -> sqlite3.Row | None:
         with self.connect() as connection:
