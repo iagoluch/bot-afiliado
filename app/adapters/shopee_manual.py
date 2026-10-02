@@ -111,8 +111,18 @@ class ShopeeManualAdapter(AffiliateAdapter):
 
     @staticmethod
     def _optional_float(value: Any) -> float | None:
-        return float(str(value).replace(",", ".")) if value not in (None, "") else None
+        if value in (None, ""):
+            return None
+        try:
+            return float(str(value).replace(",", "."))
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _optional_int(value: Any) -> int | None:
-        return int(value) if value not in (None, "") else None
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
