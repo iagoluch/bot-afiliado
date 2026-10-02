@@ -207,7 +207,7 @@ def test_video_plan_adds_zoom_text_entry_and_scene_fades(tmp_path: Path) -> None
         duration_scale=1.0,
     )
 
-    assert len(paths) == 15  # 6 keyframes por cena + 3 frames de fade
+    assert len(paths) == 18  # 8 keyframes por cena + 2 frames de fade
     assert len(paths) == len(durations)
     assert sum(durations) == pytest.approx(4.0)
     assert any(path.name.startswith("fade-01-") for path in paths)
