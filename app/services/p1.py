@@ -216,6 +216,10 @@ class P1Pipeline:
                     queue_status,
                     required_action,
                 )
+                persisted_queue = self.db.get_social_queue(queue_id)
+                if persisted_queue is not None:
+                    queue_status = str(persisted_queue["status"])
+                    required_action = persisted_queue["required_action"]
             packages.append({
                 "content_id": content_id,
                 "queue_id": queue_id,
