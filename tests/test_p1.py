@@ -530,6 +530,7 @@ def test_product_image_loader_accepts_only_approved_https_hosts() -> None:
     assert not _approved_image_url("https://localhost/product.jpg", ("localhost",))
     assert not _approved_image_url("https://assets.local/product.jpg", ("assets.local",))
     assert not _approved_image_url("https://images.example:8443/product.jpg", ("images.example",))
+    assert not _approved_image_url("https://images.example:99999/product.jpg", ("images.example",))
     assert _NoRedirect().redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1/private") is None
 
 
