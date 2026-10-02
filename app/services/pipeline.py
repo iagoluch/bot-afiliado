@@ -60,11 +60,23 @@ class Pipeline:
 
     def ingest_offers(self, offers: list[Offer], *, content_campaign_id: str | None = None) -> list[int]:
         validated: list[Offer] = []
+        identities: set[tuple[str, str, str]] = set()
         for offer in offers:
             offer_data = asdict(offer)
             if merchant_key(offer_data) == "amazon":
                 raise ValueError("Amazon ingest bloqueado: aguarda aprovacao escrita e desenho de retencao")
             validate_offer(offer_data)
+            identity = (
+                str(offer.affiliate_network).strip(),
+                str(offer.merchant).strip(),
+                str(offer.external_product_id).strip(),
+            )
+            if identity in identities:
+                raise ValueError(
+                    "batch contem identidade de oferta duplicada: "
+                    f"{identity[0]} / {identity[1]} / {identity[2]}"
+                )
+            identities.add(identity)
             validated.append(offer)
 
         ids: list[int] = []
