@@ -123,7 +123,10 @@ class GeminiProvider:
             {
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": json.dumps(data, ensure_ascii=False)}]}],
-                "generationConfig": {\n                    "thinkingConfig": {"thinkingLevel": "low"},\n                    "maxOutputTokens": 256,\n                },
+                "generationConfig": {
+                    "thinkingConfig": {"thinkingLevel": "low"},
+                    "maxOutputTokens": 256,
+                },
             },
             ensure_ascii=False,
         ).encode("utf-8")
