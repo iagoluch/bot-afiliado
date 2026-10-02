@@ -42,7 +42,7 @@ def is_in_cooldown(
         ):
             return True
         if db.rows(
-            "SELECT 1 FROM publish_queue q JOIN offers o ON o.id=q.offer_id WHERE q.channel=? AND q.dry_run=? AND q.status IN ('PENDING','PROCESSING') AND o.category=? LIMIT 1",
+            "SELECT 1 FROM publish_queue q JOIN offers o ON o.id=q.offer_id WHERE q.channel=? AND q.dry_run=? AND q.status IN ('PENDING','PROCESSING','FAILED') AND o.category=? LIMIT 1",
             (channel, int(dry_run), category),
         ):
             return True
