@@ -120,6 +120,11 @@ def test_dynamic_web_responses_include_defensive_security_headers(tmp_path: Path
     assert rejected.headers["x-content-type-options"] == "nosniff"
     assert rejected.headers["cache-control"] == "no-store"
 
+    docs = client.get("/docs")
+    assert docs.status_code == 200
+    assert "content-security-policy" not in docs.headers
+    assert docs.headers["x-content-type-options"] == "nosniff"
+
 
 def test_admin_basic_auth_public_routes_and_secret_redaction(tmp_path: Path) -> None:
     secret = "unique-admin-password"
