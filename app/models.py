@@ -10,6 +10,19 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def normalize_utc_timestamp(value: str, *, field: str = "timestamp") -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError(f"{field} e obrigatorio")
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} invalido") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} precisa incluir timezone")
+    return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 def expires_after(value: str | None, hours: int = 24) -> str:
     try:
         base = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
