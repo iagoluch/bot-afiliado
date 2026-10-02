@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -149,6 +150,9 @@ def validate_offer(offer: dict) -> None:
         try:
             number = float(value)
         except (TypeError, ValueError):
+            errors.append(f"{label} invalido")
+            continue
+        if not math.isfinite(number):
             errors.append(f"{label} invalido")
             continue
         if number < minimum or (maximum is not None and number > maximum):
