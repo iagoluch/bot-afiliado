@@ -16,6 +16,7 @@ from app import cli
 from app.adapters.shopee_manual import ShopeeManualAdapter
 from app.config import Settings
 from app.db import Database, MAX_CONTENT_JOB_ATTEMPTS
+from app.models import Offer
 from app.scheduler import run_tick
 from app.services.llm import TemplateProvider
 from app.services.analytics import analytics_breakdown
@@ -725,3 +726,103 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
     assert reopened.overview()["clicks"] == 5
     assert reopened.overview()["conversions"] == 2
     assert reopened.worker_runtime()["heartbeat_at"] >= first_runtime["heartbeat_at"]
+
+def test_conversion_reimport_preserves_original_attribution(tmp_path: Path) -> None:
+    db = Database(tmp_path / "conversion-attribution.db")
+    db.init()
+
+    first_offer_id = db.upsert_offer(Offer(
+        merchant="Loja",
+        affiliate_network="Rede",
+        external_product_id="produto-1",
+        title="Produto 1",
+        current_price_cents=10000,
+        source_url="https://example.com/produto-1",
+        affiliate_url="https://example.com/go/produto-1",
+    ))
+    second_offer_id = db.upsert_offer(Offer(
+        merchant="Loja",
+        affiliate_network="Rede",
+        external_product_id="produto-2",
+        title="Produto 2",
+        current_price_cents=20000,
+        source_url="https://example.com/produto-2",
+        affiliate_url="https://example.com/go/produto-2",
+    ))
+    first_offer = db.get_offer(first_offer_id)
+    second_offer = db.get_offer(second_offer_id)
+    assert first_offer is not None
+    assert second_offer is not None
+
+    first_click = db.record_click(
+        first_offer,
+        channel="telegram",
+        campaign_id="campanha-a",
+        creative_id="criativo-a",
+        referrer=None,
+        utm_source=None,
+        utm_medium=None,
+        utm_campaign=None,
+        sub_id=None,
+    )
+    second_click = db.record_click(
+        second_offer,
+        channel="instagram",
+        campaign_id="campanha-b",
+        creative_id="criativo-b",
+        referrer=None,
+        utm_source=None,
+        utm_medium=None,
+        utm_campaign=None,
+        sub_id=None,
+    )
+
+    original = {
+        "external_order_id": "pedido-1",
+        "offer_id": first_offer_id,
+        "click_id": first_click,
+        "merchant": "Loja",
+        "network": "Rede",
+        "value_cents": 10000,
+        "commission_cents": 1000,
+        "status": "PENDING",
+        "channel": "telegram",
+        "campaign": "campanha-a",
+        "timestamp": "2026-10-02T01:00:00+00:00",
+    }
+    db.import_conversion(original)
+
+    updated = {
+        **original,
+        "value_cents": 12000,
+        "commission_cents": 1200,
+        "status": "APPROVED",
+        "timestamp": "2026-10-02T02:00:00+00:00",
+    }
+    db.import_conversion(updated)
+    before = dict(db.rows(
+        "SELECT * FROM conversions WHERE network=? AND external_order_id=?",
+        ("Rede", "pedido-1"),
+    )[0])
+    assert before["value_cents"] == 12000
+    assert before["commission_cents"] == 1200
+    assert before["status"] == "APPROVED"
+
+    with pytest.raises(ValueError, match="atribuicao da conversao difere da importacao original"):
+        db.import_conversion({
+            **updated,
+            "offer_id": second_offer_id,
+            "click_id": second_click,
+            "channel": "instagram",
+            "campaign": "campanha-b",
+            "value_cents": 99999,
+            "commission_cents": 9999,
+            "status": "PAID",
+        })
+
+    after = dict(db.rows(
+        "SELECT * FROM conversions WHERE network=? AND external_order_id=?",
+        ("Rede", "pedido-1"),
+    )[0])
+    assert after == before
+
