@@ -199,6 +199,32 @@ def test_awin_rejects_currency_unknown_host_and_uncompressed_limit(tmp_path: Pat
         AwinFeedAdapter(max_uncompressed_bytes=20).import_offers(limited_gzip)
 
 
+def test_awin_rejects_ambiguous_csv_structure_and_invalid_limits(tmp_path: Path) -> None:
+    source = (ROOT / "examples" / "awin_feed.sample.csv").read_text(encoding="utf-8")
+    header, row = source.splitlines()[:2]
+
+    duplicate = tmp_path / "duplicate-header.csv"
+    duplicate.write_text(
+        header.replace("currency,", "currency,currency,", 1)
+        + "\n"
+        + row.replace(",BRL,", ",BRL,BRL,", 1)
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="colunas duplicadas"):
+        AwinFeedAdapter().import_offers(duplicate)
+
+    extra = tmp_path / "extra-column.csv"
+    extra.write_text(header + "\n" + row + ",unexpected\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="estrutura CSV Awin invalida"):
+        AwinFeedAdapter().import_offers(extra)
+
+    with pytest.raises(ValueError, match="limites.*positivos"):
+        AwinFeedAdapter(max_rows=0)
+    with pytest.raises(ValueError, match="delimiter"):
+        AwinFeedAdapter(delimiter="\n")
+
+
 def test_mercado_livre_manual_preserves_official_link_and_capabilities(tmp_path: Path) -> None:
     adapter = MercadoLivreManualAdapter()
     offer = adapter.import_offers(ROOT / "examples" / "mercadolivre_offers.sample.csv")[0]
