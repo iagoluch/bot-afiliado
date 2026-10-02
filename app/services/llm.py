@@ -258,11 +258,16 @@ class GraniteProvider:
             "--offline", "--simple-io", "--no-display-prompt", "--no-show-timings",
             "--log-disable", "--single-turn",
         ]
+        safe_environment_keys = {
+            "PATH", "HOME", "USER", "LOGNAME",
+            "TMPDIR", "TEMP", "TMP",
+            "LANG", "LC_ALL", "LC_CTYPE",
+            "LD_LIBRARY_PATH",
+            "SystemRoot", "WINDIR", "PATHEXT",
+        }
         environment = {
             key: value for key, value in os.environ.items()
-            if not key.startswith("LLAMA_ARG_") and key not in {
-                "HF_TOKEN", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"
-            }
+            if key in safe_environment_keys
         }
         with heavy_work_slot():
             completed = subprocess.run(
