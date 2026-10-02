@@ -19,7 +19,7 @@ from app.adapters.base import Capability, CapabilityStatus
 from app.adapters.shopee_manual import ShopeeManualAdapter
 from app.config import Settings
 from app.db import Database
-from app.models import Offer, money_to_cents, utc_now
+from app.models import MAX_SQLITE_INTEGER, Offer, money_to_cents, utc_now
 from app.scheduler import due_slot, run_due, run_tick
 from app.services.compliance import ComplianceError, validate_content, validate_offer
 from app.services.content import telegram_message, telegram_tracking_url
@@ -281,6 +281,38 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_canonical_integers_reject_values_beyond_sqlite_range(db: Database) -> None:
+    with pytest.raises(ValueError, match="limite de armazenamento"):
+        money_to_cents(str(MAX_SQLITE_INTEGER))
+
+    offer = {
+        "merchant": "Shopee",
+        "affiliate_network": "Shopee Afiliados",
+        "title": "Produto",
+        "source_url": "https://shopee.com.br/product/1/huge",
+        "affiliate_url": "https://s.shopee.com.br/huge",
+        "current_price_cents": MAX_SQLITE_INTEGER + 1,
+        "stock_status": "IN_STOCK",
+    }
+    with pytest.raises(ComplianceError, match="limite de armazenamento"):
+        validate_offer(offer)
+
+    with pytest.raises(ValueError, match="limite de armazenamento"):
+        db.import_conversion({
+            "external_order_id": "huge-conversion",
+            "offer_id": None,
+            "click_id": None,
+            "merchant": "Shopee",
+            "network": "Shopee Afiliados",
+            "value_cents": MAX_SQLITE_INTEGER + 1,
+            "commission_cents": 0,
+            "status": "APPROVED",
+            "channel": None,
+            "campaign": None,
+            "timestamp": utc_now(),
+        })
+
+
 def test_money_parser_rejects_non_finite_values(value: str) -> None:
     with pytest.raises(ValueError, match="valor monetario invalido"):
         money_to_cents(value)
