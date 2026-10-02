@@ -2,22 +2,21 @@
 
 Data: 01/10/2026. Componentes P0 a P3 e runtime local para Lubuntu implementados e validados offline sem publicação social externa; o MVP real ainda depende de acessos e aprovações.
 
-Repositório GitHub privado: https://github.com/iagoluch/bot-afiliado (`main`).
+Repositório GitHub: https://github.com/iagoluch/bot-afiliado (`main`).
 
 A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP real faltam aprovação e credenciais Shopee, token/chat e canal Telegram aprovado, domínio HTTPS público aprovado e export oficial de conversões. Instagram/TikTok e demais programas têm aprovações próprias descritas abaixo. Nenhum envio real foi feito.
 
 ## Runtime Lubuntu 24/7
 
-- Homologação no Acer em 01/10/2026 confirmou a causa da configuração divergente: `Settings.from_env()` lia somente `os.environ`, enquanto apenas `start.sh` e systemd interpretavam `.env`. O carregamento agora é único em Python, ancorado na raiz, com precedência `ambiente > .env > padrão`; CLI, worker, web, scripts e units recebem a mesma configuração. O timeout efetivo do processo foi confirmado em 300 s.
-- `REAL_LOCAL_AI` foi comprovado pelo `copy-preview` com o `qwen3.5:2b` real em 01/10/2026. Após `ollama stop`, a requisição cold recebeu HTTP 200 e o provider respondeu em 199,823 s (226,74 s de parede para o comando); a repetição warm recebeu HTTP 200 e respondeu em 5,057 s (59,14 s de parede no host sob pressão de I/O). Nas duas passagens a sugestão foi rejeitada pela validação factual: `source=template`, `fallback_reason=SUGGESTION_REJECTED`, com o evento seguro `provider=ollama`, `status=REJECTED`. Portanto, houve inferência local real e fallback correto, mas não um hook do Qwen aceito para uso no produto.
-- O cold start permanece variável neste Acer. Antes da passagem bem-sucedida, o `copy-preview` expirou novamente com `TimeoutError` em 321,707 s e `LOCAL_GENERATION_FAILED`, enquanto o Ollama ainda carregava o modelo e o swap/HDD estavam pressionados. Um ensaio anterior com timeout diagnóstico de 900 s também falhou após 927,35 s; o timeout padrão do bot continua em 300 s. A passagem bem-sucedida ocorreu com zram temporário, após leituras anteriores do modelo; isso não prova que zram causou a melhora. O zram chegou a usar cerca de 1,9 GiB de RAM para 2 GiB de páginas e foi desativado, sem configuração persistente.
-- Após um load cancelado, `/api/tags` também apresentou latência acima de 1 s e erro 500 transitório. A sonda local agora permite até 3 s e uma única repetição para erro de transporte/timeout; modelo ausente ou payload inválido continuam falhando imediatamente. Cada inferência local registra somente provider, estado, duração, motivo de fallback e classe de erro em JSON no stderr, sem prompt, resposta, URL ou segredo.
-- `OllamaProvider` local usa `qwen3.5:2b`, `think=false`, contexto 1024, temperatura 0.3 e keep-alive 2m; resposta fora da linguagem genérica permitida ou falha volta ao template. O P1 grava o hook seguro no ContentPackage de vídeo; fatos, captions, score e compliance permanecem em Python. Um lock compartilhado serializa Ollama e FFmpeg entre processos no Linux.
-- `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT estão implementados. Jobs P1 nascem com o upsert, são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
-- `runtime-status` e `/health?details=true` mostram apenas banco, worker/heartbeat/ciclo, profundidade da fila, Ollama/modelo, FFmpeg e DRY_RUN. `scripts/*.sh` e templates systemd usam caminhos do clone e usuário normal. A web permanece em `127.0.0.1:8000`; as units do bot ainda não foram instaladas neste host.
-- Validação no Acer: `bash scripts/test.sh` terminou com **164 testes aprovados** e 181 avisos de depreciação de dependências em 115,72 s em 01/10/2026, sem depender de Ollama, marketplace, credencial ou publicação externa. FFmpeg 8.0.1 foi instalado neste host; o teste curto de MP4 passou. O E2E offline cobre sample, ingestão, curadoria, fila `SIMULATED`, fallback `TEMPLATE_FALLBACK`, ContentPackage, assets locais, tracking `/go`, cinco cliques locais, importação idempotente de duas conversões, analytics, idle, heartbeat e persistência após restart. Nenhum redirect externo é seguido no teste.
-- Smoke operacional descartável: worker real em `DRY_RUN` por três minutos, com banco e criativos em `/tmp`, Ollama e FFmpeg indisponíveis por configuração do ensaio; 1 oferta, fila `SIMULATED`, job `COMPLETED`, 7 pacotes e heartbeat, seguido de encerramento `STOPPED` por SIGTERM. Web real em loopback temporário respondeu 200 em `/health?details=true` e `/offers` e encerrou limpo. Nenhum destino externo recebeu chamada.
-- Uma passagem E2E descartável adicional com Ollama real foi iniciada, mas terminou sem resultado verificável; ela não é contabilizada como teste aprovado. O E2E offline aprovado acima usa `TemplateProvider` e não prova inferência real. O commit anterior `adf7a42` foi enviado por HTTPS para `origin/main` e o SHA remoto foi confirmado.
+- A rota operacional de IA foi simplificada em 01/10/2026: Qwen/Ollama não participa mais da seleção de provider. O bot funciona sem LLM por `TemplateProvider`; com `GEMINI_API_KEY`, Gemini é o provider remoto principal. Granite GGUF via llama.cpp é fallback local experimental e permanece `AI_LOCAL_ENABLED=false` até homologação específica no Acer.
+- O router aplica timeout curto por provider (12 s remoto e 20 s local por padrão), fallback em cadeia e circuit breaker. Duas falhas ou sugestões rejeitadas consecutivas pausam o provider por 300 s; nenhuma falha de IA deve bloquear o worker por minutos.
+- A chave Gemini existe somente em memória e no header `x-goog-api-key`; logs estruturados registram somente provider, status, duração, motivo de fallback e classe de erro. Prompt, resposta, URL e segredos não são gravados.
+- A IA continua restrita à camada editorial. Python determina preço, desconto, cupom, estoque, URLs, tracking, score, compliance, estados e publicação. O hook pode usar apenas vocabulário genérico e tokens sanitizados de título/categoria; alegações não verificadas e termos típicos de prompt injection são recusados.
+- `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT permanecem implementados. Jobs P1 são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
+- `runtime-status` e `/health?details=true` mostram somente banco, worker/heartbeat/ciclo, profundidade da fila, configuração segura de providers de IA, FFmpeg e DRY_RUN; nenhuma chave é exposta.
+- A suíte offline histórica validada no Acer tinha **164 testes aprovados**. A migração de IA ganhou CI próprio em GitHub Actions; o gate executa Python 3.11 com rede de IA desabilitada e precisa permanecer verde antes de considerar alterações concluídas.
+- Evidência histórica que motivou a retirada do Qwen da rota ativa: `qwen3.5:2b` chegou a responder cold em 199,823 s e warm em 5,057 s, mas também teve cold starts acima de 300/900 s sob pressão de HDD/swap; as respostas observadas ainda foram rejeitadas pelo validator. Esses dados ficam preservados como diagnóstico, não como configuração operacional.
+- FFmpeg 8.0.1 foi validado no Acer e o teste curto de MP4 passou. Web e worker continuam locais por padrão; nenhuma publicação social externa real foi executada.
 
 | COMPONENT | STATUS | TESTED | EXTERNAL DEPENDENCY | NEXT ACTION |
 |---|---|---|---|---|
@@ -45,7 +44,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | Feedback determinístico | COMPLETE_LOCAL | Produto/loja/categoria/canal/hora, CTR/CVR/EPC/receita com volume mínimo, smoothing e limite; 1 evento não altera prioridade | Histórico real suficiente | Reavaliar pesos com operação real |
 | Logs estruturados | COMPLETE_LOCAL | SQLite limitado, CLI `events`, ciclo DRY_RUN e falha de log sem repetição | Nenhuma | Consultar eventos na operação |
 | Compliance configurável | COMPLETE_LOCAL | Regras merchant/canal, freshness, Amazon/ML/Admitad fail closed | Termos e canais aprovados | Revisar overrides antes da exposição |
-| IA local auxiliar | REAL_LOCAL_AI_EXECUTED_WITH_TEMPLATE_FALLBACK | Mocks offline, timeout, bloqueio de alegações, CLI somente leitura; Qwen real respondeu cold em 199,823 s e warm em 5,057 s, mas ambas as sugestões foram rejeitadas | Cold start variável sob pressão de RAM/HDD/swap; hook aceito e E2E real completo ainda não comprovados | Manter fallback e timeout de 300 s; não retomar otimização nesta rodada |
+| IA opcional | ROUTER_READY_WAITING_FOR_KEY | Gemini/Granite/template, timeout, fallback, circuit breaker, segredo fora de logs e testes offline | `GEMINI_API_KEY`; Granite local não homologado | Inserir chave Gemini no `.env` e executar smoke controlado; manter Granite desligado |
 
 ## Dependências externas pendentes
 
@@ -60,7 +59,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - Feed Awin de programa aprovado; chave de feed e token da Partner API continuam separados.
 - Link Mercado Livre gerado pelo portal/barra oficial e canal público permitido.
 - Export Admitad de programa/ad space aprovados, com confirmação de que `url` é link afiliado da rede; sem ele a distribuição permanece bloqueada.
-- Provider remoto de IA pendente de contrato e política de dados; a operação local não depende dele.
+- Chave de autenticação Gemini ainda não configurada. Enquanto ausente, o bot usa TemplateProvider. No free tier, enviar somente dados públicos de catálogo e manter segredos/dados internos fora dos prompts.
 
 ## Evidência de validação
 
@@ -77,7 +76,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - Upgrade do SQLite cancela rascunhos sociais e remove da fila Telegram itens não publicados que possam conter o preço riscado legado. No banco local `data/affiliate.db`, a inspeção encontrou 0 ofertas, 0 pacotes e 0 itens na fila.
 - Instagram: 9 testes aprovados confirmam origem Graph fixa, Bearer fora da URL/corpo, redirects recusados, URL derivada do MP4 persistido, CLI com zero rede em DRY_RUN, gates de conta/container e bloqueio de `media_publish` sem chamada nem mudança de estado.
 - Admitad: 13 testes do adapter e teste CLI confirmam importação local, preservação de SubID e zero itens em filas; teste de compliance confirma bloqueio de distribuição/redirect antes da revisão. Teste de hub confirma catálogo oculto, página e `/go` em 403, sem clique gravado.
-- IA local: 4 testes confirmam fallback, filtragem de sugestão e CLI `copy-preview` sem escrita em pacote/fila.
+- IA: a suíte cobre Gemini mockado com chave somente em header, respostas inválidas/timeout, fallback para Granite, Granite offline via llama.cpp, circuit breaker, logs sem segredo, validator de alegações/prompt injection e CLI `copy-preview` sem escrita em pacote/fila. O antigo teste real de Qwen permanece somente como evidência histórica.
 - P2 cobre contrato HTTP Amazon mockado, cache OAuth curto, recusa de redirect, tag/moeda/segredo, Awin CSV/gzip/limites/BRL, Mercado Livre manual, slots por adapter e E2E multicanal idempotente.
 - Amazon P2 foi corrigido para fail closed após revisão dos termos BR: testes cobrem contrato mockado; CLI/pipeline, hub, `/go`, imagem e filas operacionais permanecem bloqueados.
 - E2E P3 descartável em `DRY_RUN=true`: Mercado Livre importado, Telegram `SIMULATED`, 6 ContentPackages, 14 páginas administrativas, 1 clique 302, CTR `null`, `publications=0` e limpeza confirmada.
