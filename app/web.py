@@ -191,7 +191,7 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
             campaign_id=campaign_id,
             creative_id=creative_id,
             format=format,
-            referrer=referer,
+            referrer=referer[:2048] if referer else None,
             utm_source=utm_source,
             utm_medium=utm_medium,
             utm_campaign=utm_campaign,
