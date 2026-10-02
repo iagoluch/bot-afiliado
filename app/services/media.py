@@ -464,7 +464,7 @@ class CreativeGenerator:
         root.mkdir(parents=True, exist_ok=True)
 
         scenes: list[tuple[float, list[Image.Image]]] = []
-        steps = 6
+        steps = 8
         for scene in script:
             role = str(scene.get("role") or "generic")
             primary = str(scene["text"])
@@ -508,18 +508,23 @@ class CreativeGenerator:
 
         paths: list[Path] = []
         durations: list[float] = []
-        fade_steps = 3
+        fade_steps = 2
         for scene_index, (scene_duration, frames) in enumerate(scenes):
             has_next = scene_index + 1 < len(scenes)
             fade_duration = min(0.20, scene_duration * 0.12) if has_next else 0.0
             body_duration = max(0.06, scene_duration - fade_duration)
-            frame_duration = body_duration / len(frames)
+            animation_window = min(1.20, body_duration * 0.60)
+            frame_duration = animation_window / len(frames)
+            hold_duration = max(0.0, body_duration - animation_window)
 
             for frame_index, frame in enumerate(frames, start=1):
                 path = root / f"scene-{scene_index + 1:02d}-{frame_index:02d}.png"
                 self._save(frame, path)
                 paths.append(path)
-                durations.append(frame_duration)
+                duration = frame_duration
+                if frame_index == len(frames):
+                    duration += hold_duration
+                durations.append(duration)
 
             if has_next and fade_duration > 0:
                 current = frames[-1]
@@ -708,33 +713,49 @@ class CreativeGenerator:
             self._save(tiktok_ab, output / "ab-tiktok-hook.png"),
         )
 
-        reel_video_frames, reel_durations, reel_keyframe_root = self._animated_video_plan(
-            output=output,
-            prefix="instagram-reel",
-            title=title,
-            product=product,
-            script=reel_script,
-            duration_scale=duration_scale,
-        )
-        tiktok_video_frames, tiktok_durations, tiktok_keyframe_root = self._animated_video_plan(
-            output=output,
-            prefix="tiktok",
-            title=title,
-            product=product,
-            script=tiktok_script,
-            duration_scale=duration_scale,
-        )
-        try:
-            reel_video = self._video(reel_video_frames, reel_durations, output / "instagram-reel.mp4")
-            tiktok_video = self._video(tiktok_video_frames, tiktok_durations, output / "tiktok-draft.mp4")
-        finally:
-            shutil.rmtree(reel_keyframe_root, ignore_errors=True)
-            shutil.rmtree(tiktok_keyframe_root, ignore_errors=True)
-            keyframe_parent = output / ".video-keyframes"
+        executable = self.ffmpeg_path or shutil.which("ffmpeg")
+        ffmpeg_ready = bool(executable and Path(executable).is_file())
+        if ffmpeg_ready:
+            reel_video_frames, reel_durations, reel_keyframe_root = self._animated_video_plan(
+                output=output,
+                prefix="instagram-reel",
+                title=title,
+                product=product,
+                script=reel_script,
+                duration_scale=duration_scale,
+            )
+            tiktok_video_frames, tiktok_durations, tiktok_keyframe_root = self._animated_video_plan(
+                output=output,
+                prefix="tiktok",
+                title=title,
+                product=product,
+                script=tiktok_script,
+                duration_scale=duration_scale,
+            )
             try:
-                keyframe_parent.rmdir()
-            except OSError:
-                pass
+                reel_video = self._video(reel_video_frames, reel_durations, output / "instagram-reel.mp4")
+                tiktok_video = self._video(tiktok_video_frames, tiktok_durations, output / "tiktok-draft.mp4")
+            finally:
+                shutil.rmtree(reel_keyframe_root, ignore_errors=True)
+                shutil.rmtree(tiktok_keyframe_root, ignore_errors=True)
+                keyframe_parent = output / ".video-keyframes"
+                try:
+                    keyframe_parent.rmdir()
+                except OSError:
+                    pass
+        else:
+            # Não renderiza dezenas de keyframes quando o vídeo nem pode ser
+            # codificado. Mantém exatamente o contrato de erro anterior.
+            reel_durations = tuple(
+                max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale)
+                for s in reel_script
+            )
+            tiktok_durations = tuple(
+                max(0.1, (float(s["end"]) - float(s["start"])) * duration_scale)
+                for s in tiktok_script
+            )
+            reel_video = self._video(reel_frames, reel_durations, output / "instagram-reel.mp4")
+            tiktok_video = self._video(tiktok_frames, tiktok_durations, output / "tiktok-draft.mp4")
 
         return CreativeAssets(
             root=output,
