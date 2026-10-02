@@ -96,6 +96,15 @@ def main() -> None:
     instagram_create = sub.add_parser("instagram-reel-create", help="Cria container Reel apos revisao explicita")
     instagram_create.add_argument("queue_id", type=int)
     instagram_create.add_argument("--confirm-reviewed", action="store_true")
+    instagram_container_reconcile = sub.add_parser(
+        "instagram-reel-container-reconcile",
+        help="Reconcilia criacao de container Reel com resultado incerto",
+    )
+    instagram_container_reconcile.add_argument("queue_id", type=int)
+    container_outcome = instagram_container_reconcile.add_mutually_exclusive_group(required=True)
+    container_outcome.add_argument("--container-id")
+    container_outcome.add_argument("--confirmed-not-created", action="store_true")
+    instagram_container_reconcile.add_argument("--note", required=True)
     instagram_status = sub.add_parser("instagram-reel-status", help="Consulta status do container Reel")
     instagram_status.add_argument("queue_id", type=int)
     instagram_publish = sub.add_parser(
@@ -203,6 +212,13 @@ def main() -> None:
         result = InstagramReelPublisher(db, settings).create_reel(
             args.queue_id,
             approved=args.confirm_reviewed,
+        )
+    elif args.command == "instagram-reel-container-reconcile":
+        result = InstagramReelPublisher(db, settings).reconcile_container_creation(
+            args.queue_id,
+            container_id=args.container_id,
+            confirmed_not_created=args.confirmed_not_created,
+            note=args.note,
         )
     elif args.command == "instagram-reel-status":
         result = InstagramReelPublisher(db, settings).check_status(args.queue_id)

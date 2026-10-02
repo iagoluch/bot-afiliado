@@ -104,6 +104,15 @@ CREATE TABLE IF NOT EXISTS instagram_publications (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS instagram_container_attempts (
+    social_queue_id INTEGER PRIMARY KEY REFERENCES social_queue(id) ON DELETE CASCADE,
+    asset_url TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('CREATING','AMBIGUOUS')),
+    error_code TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS publish_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     offer_id INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
@@ -593,6 +602,209 @@ class Database:
                    WHERE q.id=?""",
                 (queue_id,),
             ).fetchone()
+
+    def instagram_container_attempt(self, queue_id: int) -> sqlite3.Row | None:
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM instagram_container_attempts WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone()
+
+    def claim_instagram_container_creation(self, queue_id: int, asset_url: str) -> sqlite3.Row:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute(
+                "SELECT 1 FROM instagram_publications WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone():
+                raise ValueError("item social ja possui container Instagram")
+            existing = connection.execute(
+                "SELECT status FROM instagram_container_attempts WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError(
+                    "criacao de container Instagram ja esta em andamento ou exige reconciliacao"
+                )
+            queue = connection.execute(
+                "SELECT status FROM social_queue WHERE id=?",
+                (queue_id,),
+            ).fetchone()
+            if queue is None:
+                raise ValueError("item social inexistente para criar container Instagram")
+            if queue["status"] != "READY_FOR_PUBLISH":
+                raise ValueError("item social nao esta pronto para criar container Instagram")
+            connection.execute(
+                """INSERT INTO instagram_container_attempts(
+                       social_queue_id,asset_url,status,created_at,updated_at
+                   ) VALUES(?,?,'CREATING',?,?)""",
+                (queue_id, asset_url, now, now),
+            )
+            connection.execute(
+                "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                (
+                    "Criacao do container Reel iniciada; nao repetir enquanto o resultado nao estiver confirmado.",
+                    now,
+                    queue_id,
+                ),
+            )
+            return connection.execute(
+                "SELECT * FROM instagram_container_attempts WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone()
+
+    def release_instagram_container_creation(self, queue_id: int) -> None:
+        now = utc_now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM instagram_container_attempts WHERE social_queue_id=? AND status='CREATING'",
+                (queue_id,),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("tentativa Instagram nao pode ser liberada neste estado")
+            connection.execute(
+                "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                ("Falha confirmada antes da criacao do container; uma nova tentativa exige revisao explicita.", now, queue_id),
+            )
+
+    def mark_instagram_container_creation_ambiguous(self, queue_id: int, error_code: str) -> None:
+        now = utc_now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE instagram_container_attempts
+                   SET status='AMBIGUOUS',error_code=?,updated_at=?
+                   WHERE social_queue_id=? AND status='CREATING'""",
+                (error_code[:100], now, queue_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("tentativa Instagram ambigua nao estava em CREATING")
+            connection.execute(
+                "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                (
+                    "Criacao do container ficou ambigua; verificar a Meta e reconciliar manualmente antes de repetir.",
+                    now,
+                    queue_id,
+                ),
+            )
+
+    def complete_instagram_container_creation(
+        self,
+        queue_id: int,
+        asset_url: str,
+        container_id: str,
+    ) -> sqlite3.Row:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            attempt = connection.execute(
+                """SELECT asset_url,status FROM instagram_container_attempts
+                   WHERE social_queue_id=?""",
+                (queue_id,),
+            ).fetchone()
+            if attempt is None or attempt["status"] != "CREATING":
+                raise ValueError("tentativa Instagram nao esta em CREATING")
+            if str(attempt["asset_url"]) != asset_url:
+                raise ValueError("asset do container Instagram mudou durante a criacao")
+            if connection.execute(
+                "SELECT 1 FROM instagram_publications WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone():
+                raise ValueError("item social ja possui container Instagram")
+            connection.execute(
+                """INSERT INTO instagram_publications(
+                       social_queue_id,media_type,asset_url,container_id,status,created_at,updated_at
+                   ) VALUES(?,'REELS',?,?,'CONTAINER_CREATED',?,?)""",
+                (queue_id, asset_url, container_id, now, now),
+            )
+            connection.execute(
+                "DELETE FROM instagram_container_attempts WHERE social_queue_id=?",
+                (queue_id,),
+            )
+            connection.execute(
+                "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                ("Container Reel criado; consultar o status ate FINISHED antes de publicar.", now, queue_id),
+            )
+            return connection.execute(
+                "SELECT * FROM instagram_publications WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone()
+
+    def reconcile_instagram_container_creation(
+        self,
+        queue_id: int,
+        *,
+        container_id: str | None,
+        confirmed_not_created: bool,
+        note: str,
+    ) -> dict[str, Any]:
+        if bool(container_id) == bool(confirmed_not_created):
+            raise ValueError("informe container_id ou confirme ausencia, mas nao ambos")
+        if not note.strip():
+            raise ValueError("nota de reconciliacao e obrigatoria")
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            attempt = connection.execute(
+                """SELECT asset_url,status FROM instagram_container_attempts
+                   WHERE social_queue_id=?""",
+                (queue_id,),
+            ).fetchone()
+            if attempt is None:
+                raise ValueError("criacao de container Instagram nao exige reconciliacao")
+            if connection.execute(
+                "SELECT 1 FROM instagram_publications WHERE social_queue_id=?",
+                (queue_id,),
+            ).fetchone():
+                raise ValueError("item social ja possui container Instagram")
+            if container_id:
+                connection.execute(
+                    """INSERT INTO instagram_publications(
+                           social_queue_id,media_type,asset_url,container_id,status,
+                           reconciliation_note,reconciled_at,created_at,updated_at
+                       ) VALUES(?,'REELS',?,?,'CONTAINER_CREATED',?,?,?,?,?)""",
+                    (
+                        queue_id,
+                        attempt["asset_url"],
+                        container_id,
+                        note.strip()[:500],
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM instagram_container_attempts WHERE social_queue_id=?",
+                    (queue_id,),
+                )
+                connection.execute(
+                    "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                    (
+                        "Container Reel reconciliado manualmente; consultar o status ate FINISHED.",
+                        now,
+                        queue_id,
+                    ),
+                )
+                return {
+                    "queue_id": queue_id,
+                    "status": "CONTAINER_CREATED",
+                    "container_id": container_id,
+                }
+            connection.execute(
+                "DELETE FROM instagram_container_attempts WHERE social_queue_id=?",
+                (queue_id,),
+            )
+            connection.execute(
+                "UPDATE social_queue SET required_action=?,updated_at=? WHERE id=?",
+                (
+                    "Ausencia do container confirmada manualmente: "
+                    + note.strip()[:300]
+                    + ". Uma nova tentativa exige revisao explicita.",
+                    now,
+                    queue_id,
+                ),
+            )
+            return {"queue_id": queue_id, "status": "NOT_CREATED"}
 
     def instagram_publication(self, queue_id: int) -> sqlite3.Row | None:
         with self.connect() as connection:

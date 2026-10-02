@@ -14,6 +14,7 @@ from app.models import Offer
 from app.services.compliance import ComplianceError
 from app.services.instagram_graph import (
     InstagramGraphClient,
+    InstagramGraphError,
     InstagramReelPublisher,
     _NoRedirectHandler,
 )
@@ -142,6 +143,115 @@ class FakeGraphClient:
         raise AssertionError("media_publish nao pode ser chamado")
 
 
+def test_container_creation_is_reserved_before_remote_call(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    queue_id = create_reel_queue(db, settings)
+
+    class SecondClient:
+        calls = 0
+
+        def create_reel(self, *_args):
+            self.calls += 1
+            raise AssertionError("segunda chamada remota nao pode ocorrer")
+
+    second_client = SecondClient()
+    second = InstagramReelPublisher(db, settings, client=second_client)
+
+    class FirstClient:
+        calls = 0
+
+        def create_reel(self, *_args):
+            self.calls += 1
+            attempt = db.instagram_container_attempt(queue_id)
+            assert attempt is not None
+            assert attempt["status"] == "CREATING"
+            with pytest.raises(ComplianceError, match="andamento ou exige reconciliacao"):
+                second.create_reel(queue_id, approved=True)
+            return "18000000000000001"
+
+    first_client = FirstClient()
+    result = InstagramReelPublisher(db, settings, client=first_client).create_reel(
+        queue_id,
+        approved=True,
+    )
+
+    assert result["status"] == "CONTAINER_CREATED"
+    assert first_client.calls == 1
+    assert second_client.calls == 0
+    assert db.instagram_container_attempt(queue_id) is None
+
+
+def test_ambiguous_container_creation_blocks_retry_until_manual_reconciliation(
+    tmp_path: Path,
+) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    queue_id = create_reel_queue(db, settings)
+
+    class AmbiguousClient:
+        def create_reel(self, *_args):
+            raise InstagramGraphError(
+                "resultado incerto",
+                code="TRANSPORT_FAILURE",
+                ambiguous=True,
+            )
+
+    publisher = InstagramReelPublisher(db, settings, client=AmbiguousClient())
+    with pytest.raises(InstagramGraphError, match="resultado incerto"):
+        publisher.create_reel(queue_id, approved=True)
+
+    attempt = db.instagram_container_attempt(queue_id)
+    assert attempt is not None
+    assert attempt["status"] == "AMBIGUOUS"
+    assert attempt["error_code"] == "TRANSPORT_FAILURE"
+
+    healthy = FakeGraphClient()
+    with pytest.raises(ComplianceError, match="exige reconciliacao"):
+        InstagramReelPublisher(db, settings, client=healthy).create_reel(
+            queue_id,
+            approved=True,
+        )
+    assert healthy.create_calls == 0
+
+    reconciled = publisher.reconcile_container_creation(
+        queue_id,
+        container_id="18000000000000001",
+        confirmed_not_created=False,
+        note="Container confirmado no painel Meta.",
+    )
+    assert reconciled["status"] == "CONTAINER_CREATED"
+    assert db.instagram_container_attempt(queue_id) is None
+    stored = db.instagram_publication(queue_id)
+    assert stored is not None
+    assert stored["container_id"] == "18000000000000001"
+    assert stored["reconciliation_note"] == "Container confirmado no painel Meta."
+
+
+def test_confirmed_missing_container_releases_ambiguous_reservation(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    queue_id = create_reel_queue(db, settings)
+    db.claim_instagram_container_creation(queue_id, ASSET_URL)
+    db.mark_instagram_container_creation_ambiguous(queue_id, "TRANSPORT_FAILURE")
+
+    publisher = InstagramReelPublisher(db, settings, client=FakeGraphClient())
+    result = publisher.reconcile_container_creation(
+        queue_id,
+        container_id=None,
+        confirmed_not_created=True,
+        note="Painel Meta verificado sem container correspondente.",
+    )
+    assert result == {"queue_id": queue_id, "status": "NOT_CREATED"}
+    assert db.instagram_container_attempt(queue_id) is None
+
+    created = publisher.create_reel(queue_id, approved=True)
+    assert created["status"] == "CONTAINER_CREATED"
+
+
 def test_reel_state_machine_stops_after_finished_and_blocks_media_publish(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
@@ -214,6 +324,7 @@ def test_dry_run_has_zero_network_and_does_not_persist_attempt(tmp_path: Path) -
         "network_calls": 0,
     }
     assert db.instagram_publication(queue_id) is None
+    assert db.instagram_container_attempt(queue_id) is None
 
 
 @pytest.mark.parametrize(

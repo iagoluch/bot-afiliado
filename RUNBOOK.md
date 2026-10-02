@@ -97,7 +97,16 @@ O operador pode criar o container e consultar seu processamento:
 .venv\Scripts\python.exe -m app.cli instagram-reel-status 3
 ```
 
-Repita somente `instagram-reel-status` enquanto o retorno estiver `PROCESSING`. Em `FINISHED`, o estado local para em `READY_TO_PUBLISH`. O comando abaixo existe como barreira verificável e sempre falha antes da rede, sem alterar estado:
+A criacao real grava uma reserva local antes da chamada Graph API. Enquanto essa reserva existir, uma segunda tentativa para o mesmo `queue_id` falha antes da rede. Se houver timeout, falha de transporte ou resposta mutante sem ID confirmavel, a tentativa fica ambigua e nao pode ser repetida cegamente. Confira o painel Meta e reconcilie uma das duas situacoes:
+
+```bat
+.venv\Scripts\python.exe -m app.cli instagram-reel-container-reconcile 3 --container-id 18000000000000001 --note "Container confirmado no painel Meta"
+.venv\Scripts\python.exe -m app.cli instagram-reel-container-reconcile 3 --confirmed-not-created --note "Painel Meta verificado sem container correspondente"
+```
+
+Use `--container-id` somente com o ID efetivamente confirmado na Meta. Use `--confirmed-not-created` somente após confirmar a ausencia; isso libera uma nova tentativa, que ainda exige `--confirm-reviewed`. Em caso de duvida, nao reconcilie nem repita.
+
+Repita somente `instagram-reel-status` enquanto o retorno estiver `PROCESSING`. Em `FINISHED`, o estado local para em `READY_TO_PUBLISH`. O comando abaixo existe como barreira verificavel e sempre falha antes da rede, sem alterar estado:
 
 ```bat
 .venv\Scripts\python.exe -m app.cli instagram-reel-publish 3 --confirm-reviewed

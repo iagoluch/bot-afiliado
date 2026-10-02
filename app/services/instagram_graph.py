@@ -21,9 +21,16 @@ VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+$")
 
 
 class InstagramGraphError(RuntimeError):
-    def __init__(self, message: str, *, code: str = "INSTAGRAM_GRAPH_ERROR"):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INSTAGRAM_GRAPH_ERROR",
+        ambiguous: bool = False,
+    ):
         super().__init__(message)
         self.code = code
+        self.ambiguous = ambiguous
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -78,7 +85,12 @@ class InstagramGraphClient:
         return payload
 
     @staticmethod
-    def _graph_error(payload: dict[str, Any], *, http_status: int | None = None) -> InstagramGraphError:
+    def _graph_error(
+        payload: dict[str, Any],
+        *,
+        http_status: int | None = None,
+        ambiguous: bool = False,
+    ) -> InstagramGraphError:
         error = payload.get("error") if isinstance(payload, dict) else None
         raw_code = str(error.get("code", "")) if isinstance(error, dict) else ""
         raw_subcode = str(error.get("error_subcode", "")) if isinstance(error, dict) else ""
@@ -89,6 +101,7 @@ class InstagramGraphClient:
         return InstagramGraphError(
             f"Instagram Graph API recusou a requisicao ({code}{status})",
             code=code,
+            ambiguous=ambiguous,
         )
 
     def _request(self, method: str, path: str, parameters: dict[str, str]) -> dict[str, Any]:
@@ -111,17 +124,32 @@ class InstagramGraphClient:
         )
         try:
             with self._opener(request, self.timeout) as response:
-                payload = self._read_json(response)
+                try:
+                    payload = self._read_json(response)
+                except InstagramGraphError as exc:
+                    if method != "GET":
+                        raise InstagramGraphError(
+                            str(exc),
+                            code=exc.code,
+                            ambiguous=True,
+                        ) from exc
+                    raise
         except HTTPError as exc:
             try:
                 payload = self._read_json(exc)
             except InstagramGraphError:
                 payload = {}
-            raise self._graph_error(payload, http_status=exc.code) from None
+            ambiguous = method != "GET" and (exc.code >= 500 or exc.code in {408, 425})
+            raise self._graph_error(
+                payload,
+                http_status=exc.code,
+                ambiguous=ambiguous,
+            ) from None
         except (URLError, TimeoutError, OSError):
             raise InstagramGraphError(
                 "falha de transporte da Instagram Graph API",
                 code="TRANSPORT_FAILURE",
+                ambiguous=method != "GET",
             ) from None
         if "error" in payload:
             raise self._graph_error(payload)
@@ -140,7 +168,14 @@ class InstagramGraphClient:
             },
         )
         container_id = str(payload.get("id", ""))
-        return self._identifier(container_id, "container_id")
+        try:
+            return self._identifier(container_id, "container_id")
+        except InstagramGraphError as exc:
+            raise InstagramGraphError(
+                str(exc),
+                code=exc.code,
+                ambiguous=True,
+            ) from exc
 
     def container_status(self, container_id: str) -> str:
         value = self._identifier(container_id, "container_id")
@@ -256,8 +291,6 @@ class InstagramReelPublisher:
     def create_reel(self, queue_id: int, *, approved: bool) -> dict[str, Any]:
         self._require_approval(approved)
         queue = self._eligible_reel(queue_id)
-        if self.db.instagram_publication(queue_id) is not None:
-            raise ComplianceError("item social ja possui container Instagram; nao criar duplicata")
         if self.settings.dry_run:
             return {
                 "queue_id": queue_id,
@@ -267,8 +300,33 @@ class InstagramReelPublisher:
                 "asset_url": queue["asset_url"],
             }
         user_id = self._real_configuration()
-        container_id = self._client().create_reel(user_id, queue["asset_url"], str(queue["body"]))
-        publication = self.db.create_instagram_publication(queue_id, queue["asset_url"], container_id)
+        try:
+            self.db.claim_instagram_container_creation(queue_id, queue["asset_url"])
+        except ValueError as exc:
+            raise ComplianceError(str(exc)) from exc
+        try:
+            container_id = self._client().create_reel(
+                user_id,
+                queue["asset_url"],
+                str(queue["body"]),
+            )
+        except InstagramGraphError as exc:
+            if exc.ambiguous:
+                self.db.mark_instagram_container_creation_ambiguous(queue_id, exc.code)
+            else:
+                self.db.release_instagram_container_creation(queue_id)
+            raise
+        except Exception:
+            self.db.mark_instagram_container_creation_ambiguous(
+                queue_id,
+                "UNEXPECTED_CREATE_FAILURE",
+            )
+            raise
+        publication = self.db.complete_instagram_container_creation(
+            queue_id,
+            queue["asset_url"],
+            container_id,
+        )
         return dict(publication)
 
     def check_status(self, queue_id: int) -> dict[str, Any]:
@@ -310,6 +368,27 @@ class InstagramReelPublisher:
         raise ComplianceError(
             "media_publish bloqueado para conteudo afiliado: o contrato oficial acessivel "
             "nao oferece parametro confirmado para aplicar o rotulo de parceria paga"
+        )
+
+    def reconcile_container_creation(
+        self,
+        queue_id: int,
+        *,
+        container_id: str | None,
+        confirmed_not_created: bool,
+        note: str,
+    ) -> dict[str, Any]:
+        if bool(container_id) == bool(confirmed_not_created):
+            raise ValueError("informe container_id ou confirme ausencia, mas nao ambos")
+        if not note.strip():
+            raise ValueError("nota de reconciliacao e obrigatoria")
+        if container_id and not ID_PATTERN.fullmatch(container_id):
+            raise ValueError("container_id invalido")
+        return self.db.reconcile_instagram_container_creation(
+            queue_id,
+            container_id=container_id,
+            confirmed_not_created=confirmed_not_created,
+            note=note,
         )
 
     def reconcile(
