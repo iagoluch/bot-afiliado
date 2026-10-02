@@ -225,6 +225,35 @@ def test_awin_rejects_ambiguous_csv_structure_and_invalid_limits(tmp_path: Path)
         AwinFeedAdapter(delimiter="\n")
 
 
+def test_awin_custom_affiliate_hosts_must_be_public_hostnames(tmp_path: Path) -> None:
+    for host in ("localhost", "assets.local", "10.0.0.5", "cdn.example:8443", "https://cdn.example"):
+        with pytest.raises(ValueError, match="host afiliado Awin invalido"):
+            AwinFeedAdapter(allowed_affiliate_hosts=(host,))
+
+    source = (ROOT / "examples" / "awin_feed.sample.csv").read_text(encoding="utf-8")
+    credentialed = tmp_path / "credentialed.csv"
+    credentialed.write_text(
+        source.replace(
+            "https://www.awin1.com/",
+            "https://user:pass@www.awin1.com/",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="host Awin"):
+        AwinFeedAdapter().import_offers(credentialed)
+
+    ported = tmp_path / "ported.csv"
+    ported.write_text(
+        source.replace(
+            "https://www.awin1.com/",
+            "https://www.awin1.com:8443/",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="host Awin"):
+        AwinFeedAdapter().import_offers(ported)
+
+
 def test_mercado_livre_manual_preserves_official_link_and_capabilities(tmp_path: Path) -> None:
     adapter = MercadoLivreManualAdapter()
     offer = adapter.import_offers(ROOT / "examples" / "mercadolivre_offers.sample.csv")[0]
