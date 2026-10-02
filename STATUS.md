@@ -8,9 +8,9 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 
 ## Runtime Lubuntu 24/7
 
-- A rota operacional de IA foi simplificada em 01/10/2026: Qwen/Ollama não participa mais da seleção de provider. O bot funciona sem LLM por `TemplateProvider`; com `GEMINI_API_KEY`, Gemini é o provider remoto principal. Granite GGUF via llama.cpp é fallback local experimental e permanece `AI_LOCAL_ENABLED=false` até homologação específica no Acer.
+- A rota operacional de IA foi simplificada em 01/10/2026: Qwen/Ollama não participa mais da seleção de provider. O bot funciona sem LLM por `TemplateProvider`; com `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`, Cloudflare Workers AI / Gemma 4 26B A4B é o provider remoto principal. Granite GGUF via llama.cpp é fallback local experimental e permanece `AI_LOCAL_ENABLED=false` até homologação específica no Acer.
 - O router aplica timeout curto por provider (12 s remoto e 20 s local por padrão), fallback em cadeia e circuit breaker. Duas falhas ou sugestões rejeitadas consecutivas pausam o provider por 300 s; nenhuma falha de IA deve bloquear o worker por minutos.
-- A chave Gemini existe somente em memória e no header `x-goog-api-key`; logs estruturados registram somente provider, status, duração, motivo de fallback e classe de erro. Prompt, resposta, URL e segredos não são gravados.
+- O token Cloudflare existe somente em memória e no header `Authorization: Bearer`; logs estruturados registram somente provider, status, duração, motivo de fallback e classe de erro. Prompt, resposta, URL e segredos não são gravados.
 - A IA continua restrita à camada editorial. Python determina preço, desconto, cupom, estoque, URLs, tracking, score, compliance, estados e publicação. O hook pode usar apenas vocabulário genérico e tokens sanitizados de título/categoria; alegações não verificadas e termos típicos de prompt injection são recusados.
 - `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT permanecem implementados. Jobs P1 são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
 - `runtime-status` e `/health?details=true` mostram somente banco, worker/heartbeat/ciclo, profundidade da fila, configuração segura de providers de IA, FFmpeg e DRY_RUN; nenhuma chave é exposta.
@@ -44,7 +44,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | Feedback determinístico | COMPLETE_LOCAL | Produto/loja/categoria/canal/hora, CTR/CVR/EPC/receita com volume mínimo, smoothing e limite; 1 evento não altera prioridade | Histórico real suficiente | Reavaliar pesos com operação real |
 | Logs estruturados | COMPLETE_LOCAL | SQLite limitado, CLI `events`, ciclo DRY_RUN e falha de log sem repetição | Nenhuma | Consultar eventos na operação |
 | Compliance configurável | COMPLETE_LOCAL | Regras merchant/canal, freshness, Amazon/ML/Admitad fail closed | Termos e canais aprovados | Revisar overrides antes da exposição |
-| IA opcional | ROUTER_READY_WAITING_FOR_KEY | Gemini/Granite/template, timeout, fallback, circuit breaker, segredo fora de logs e testes offline | `GEMINI_API_KEY`; Granite local não homologado | Inserir chave Gemini no `.env` e executar smoke controlado; manter Granite desligado |
+| IA opcional | ROUTER_READY_WAITING_FOR_KEY | Cloudflare/Granite/template, timeout, fallback, circuit breaker, segredo fora de logs e testes offline | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`; Granite local não homologado | Inserir credenciais Cloudflare no `.env` e executar smoke controlado; manter Granite desligado |
 
 ## Dependências externas pendentes
 
@@ -59,7 +59,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - Feed Awin de programa aprovado; chave de feed e token da Partner API continuam separados.
 - Link Mercado Livre gerado pelo portal/barra oficial e canal público permitido.
 - Export Admitad de programa/ad space aprovados, com confirmação de que `url` é link afiliado da rede; sem ele a distribuição permanece bloqueada.
-- Chave de autenticação Gemini ainda não configurada. Enquanto ausente, o bot usa TemplateProvider. No free tier, enviar somente dados públicos de catálogo e manter segredos/dados internos fora dos prompts.
+- Credenciais Cloudflare Workers AI ainda não configuradas. Enquanto ausentes, o bot usa TemplateProvider. O plano Free inclui 10.000 Neurons/dia; segredos e dados internos permanecem fora dos prompts.
 
 ## Evidência de validação
 
@@ -76,7 +76,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - Upgrade do SQLite cancela rascunhos sociais e remove da fila Telegram itens não publicados que possam conter o preço riscado legado. No banco local `data/affiliate.db`, a inspeção encontrou 0 ofertas, 0 pacotes e 0 itens na fila.
 - Instagram: 9 testes aprovados confirmam origem Graph fixa, Bearer fora da URL/corpo, redirects recusados, URL derivada do MP4 persistido, CLI com zero rede em DRY_RUN, gates de conta/container e bloqueio de `media_publish` sem chamada nem mudança de estado.
 - Admitad: 13 testes do adapter e teste CLI confirmam importação local, preservação de SubID e zero itens em filas; teste de compliance confirma bloqueio de distribuição/redirect antes da revisão. Teste de hub confirma catálogo oculto, página e `/go` em 403, sem clique gravado.
-- IA: a suíte cobre Gemini mockado com chave somente em header, respostas inválidas/timeout, fallback para Granite, Granite offline via llama.cpp, circuit breaker, logs sem segredo, validator de alegações/prompt injection e CLI `copy-preview` sem escrita em pacote/fila. O antigo teste real de Qwen permanece somente como evidência histórica.
+- IA: a suíte cobre Cloudflare Workers AI mockado com token somente em header, respostas inválidas/timeout, fallback para Granite, Granite offline via llama.cpp, circuit breaker, logs sem segredo, validator de alegações/prompt injection e CLI `copy-preview` sem escrita em pacote/fila. O antigo teste real de Qwen permanece somente como evidência histórica.
 - P2 cobre contrato HTTP Amazon mockado, cache OAuth curto, recusa de redirect, tag/moeda/segredo, Awin CSV/gzip/limites/BRL, Mercado Livre manual, slots por adapter e E2E multicanal idempotente.
 - Amazon P2 foi corrigido para fail closed após revisão dos termos BR: testes cobrem contrato mockado; CLI/pipeline, hub, `/go`, imagem e filas operacionais permanecem bloqueados.
 - E2E P3 descartável em `DRY_RUN=true`: Mercado Livre importado, Telegram `SIMULATED`, 6 ContentPackages, 14 páginas administrativas, 1 clique 302, CTR `null`, `publications=0` e limpeza confirmada.
