@@ -538,12 +538,24 @@ def copy_preview(
         item for item in build_content_specs(offer, destination, telegram_url=destination)
         if (item.channel, item.format) == target
     )
-    hook, source, fallback_reason = safe_hook(
-        offer,
-        channel,
-        provider=provider,
-        settings=settings,
-    )
+    if spec.format in {"reel", "vertical_video"} or provider is not None:
+        hook, source, fallback_reason = safe_hook(
+            offer,
+            channel,
+            provider=provider,
+            settings=settings,
+        )
+    else:
+        # O preview canônico de canais sem script não usa o hook. Evita gastar
+        # Cloudflare/Granite e adicionar latência só para devolver uma sugestão
+        # que não entra no conteúdo gerado.
+        hook = TemplateProvider().suggest_hook(
+            str(offer.get("title") or ""),
+            str(offer.get("category") or ""),
+            channel,
+        )
+        source = "template"
+        fallback_reason = "AI_NOT_USED_FOR_CHANNEL"
     script = list(spec.script)
     if source != "template" and spec.format in {"reel", "vertical_video"}:
         script = [
