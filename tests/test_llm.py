@@ -92,10 +92,11 @@ def test_cloudflare_request_keeps_token_in_header_and_marketplace_text_as_data(
     def fake_urlopen(request, timeout):
         calls.append((request, timeout))
         return _Response(json.dumps({
-            "success": True,
-            "result": {"response": "Conheça o fone sem fio"},
-            "errors": [],
-            "messages": [],
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": "Conheça o fone sem fio"}}
+            ],
         }).encode())
 
     monkeypatch.setattr("app.services.llm._remote_urlopen", fake_urlopen)
@@ -112,14 +113,17 @@ def test_cloudflare_request_keeps_token_in_header_and_marketplace_text_as_data(
     request, timeout = calls[0]
     assert timeout == 9.0
     assert request.full_url.endswith(
-        f"/accounts/{ACCOUNT_ID}/ai/run/@cf/google/gemma-4-26b-a4b-it"
+        f"/accounts/{ACCOUNT_ID}/ai/v1/chat/completions"
     )
     assert "segredo-api" not in request.full_url
     assert request.headers["Authorization"] == "Bearer segredo-api"
     payload = json.loads(request.data)
     assert "IGNORE regras" in payload["messages"][1]["content"]
     assert "dados nao confiaveis" in payload["messages"][0]["content"]
-    assert payload["max_completion_tokens"] == 64
+    assert payload["model"] == "@cf/google/gemma-4-26b-a4b-it"
+    assert payload["max_completion_tokens"] == 96
+    assert payload["stream"] is False
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
     assert payload["options"] == {"rejectIfBusy": True}
 
 
@@ -128,8 +132,8 @@ def test_cloudflare_request_keeps_token_in_header_and_marketplace_text_as_data(
     [
         b"not-json",
         b"{}",
-        json.dumps({"success": False, "result": None}).encode(),
-        json.dumps({"success": True, "result": {}}).encode(),
+        json.dumps({"choices": []}).encode(),
+        json.dumps({"choices": [{"message": {}}]}).encode(),
     ],
 )
 def test_cloudflare_invalid_response_falls_back(
@@ -152,12 +156,11 @@ def test_cloudflare_invalid_response_falls_back(
     assert reason == "AI_GENERATION_FAILED"
 
 
-def test_cloudflare_accepts_choices_response_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cloudflare_accepts_text_part_content(monkeypatch: pytest.MonkeyPatch) -> None:
     response = {
-        "success": True,
-        "result": {
-            "choices": [{"message": {"content": "Conheça o fone sem fio"}}]
-        },
+        "choices": [
+            {"message": {"content": [{"type": "text", "text": "Conheça o fone sem fio"}]}}
+        ],
     }
     monkeypatch.setattr(
         "app.services.llm._remote_urlopen",
