@@ -537,9 +537,18 @@ class CreativeGenerator:
 
         return tuple(paths), tuple(durations), root
 
+    def _ffmpeg_executable(self) -> str | None:
+        configured = str(self.ffmpeg_path or "").strip()
+        if not configured:
+            return shutil.which("ffmpeg")
+        if "/" not in configured and "\\" not in configured:
+            return shutil.which(configured)
+        candidate = Path(configured).expanduser()
+        return str(candidate) if candidate.is_file() else None
+
     def _video(self, frames: tuple[Path, ...], durations: tuple[float, ...], output: Path) -> VideoResult:
-        executable = self.ffmpeg_path or shutil.which("ffmpeg")
-        if not executable or not Path(executable).is_file():
+        executable = self._ffmpeg_executable()
+        if not executable:
             return VideoResult("FFMPEG_UNAVAILABLE", None, "Configure FFMPEG_PATH com o executavel FFmpeg para gerar o MP4.")
         command = [str(executable), "-hide_banner", "-loglevel", "error", "-y"]
         for frame, duration in zip(frames, durations, strict=True):
@@ -711,8 +720,7 @@ class CreativeGenerator:
             self._save(tiktok_ab, output / "ab-tiktok-hook.png"),
         )
 
-        executable = self.ffmpeg_path or shutil.which("ffmpeg")
-        ffmpeg_ready = bool(executable and Path(executable).is_file())
+        ffmpeg_ready = self._ffmpeg_executable() is not None
         if ffmpeg_ready:
             reel_video_frames, reel_durations, reel_keyframe_root = self._animated_video_plan(
                 output=output,
