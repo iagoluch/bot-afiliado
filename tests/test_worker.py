@@ -27,7 +27,6 @@ from app.worker import (
     Worker,
     WorkerAlreadyRunning,
     WorkerLock,
-    _ollama_reachable,
     _positive_float_env,
     _source_from_env,
     retry_sqlite,
@@ -231,11 +230,6 @@ def test_real_mode_rejects_sample_source_even_when_explicitly_configured(
         _source_from_env(settings)
 
 
-def test_runtime_probe_refuses_non_loopback_ollama_url(tmp_path: Path) -> None:
-    settings = replace(settings_for(tmp_path), ollama_base_url="http://example.com")
-    assert _ollama_reachable(settings) is False
-
-
 def test_worker_lock_allows_only_one_owner_and_recovers_after_release(tmp_path: Path) -> None:
     first = WorkerLock(tmp_path / "worker.lock")
     second = WorkerLock(tmp_path / "worker.lock")
@@ -253,24 +247,31 @@ def test_worker_lock_allows_only_one_owner_and_recovers_after_release(tmp_path: 
 def test_runtime_status_and_health_details_expose_only_safe_operational_data(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = settings_for(tmp_path)
+    settings = replace(
+        settings_for(tmp_path),
+        gemini_api_key="segredo-nao-expor",
+        gemini_model="gemini-3.8-flash",
+    )
     db = Database(settings.database_path)
     db.init()
     db.record_worker_heartbeat("RUNNING", pid=123, started_at="2026-10-01T12:00:00+00:00")
-    status = runtime_status(
-        db,
-        settings,
-        ollama_probe=lambda _settings: True,
-        ffmpeg_probe=lambda _settings: False,
-    )
+    status = runtime_status(db, settings, ffmpeg_probe=lambda _settings: False)
 
     assert status["database"] == "ok"
     assert status["worker"]["status"] == "running"
     assert status["queue_depth"] == 0
-    assert status["ollama_reachable"] is True
-    assert status["ollama_model"] == "qwen3.5:2b"
+    assert status["ai"] == {
+        "remote_provider": "gemini",
+        "remote_model": "gemini-3.8-flash",
+        "remote_configured": True,
+        "local_provider": None,
+        "local_enabled": False,
+        "local_configured": False,
+        "fallback": "template",
+    }
     assert status["ffmpeg_available"] is False
     serialized = json.dumps(status)
+    assert "segredo-nao-expor" not in serialized
     assert "TELEGRAM" not in serialized
     assert "affiliate_url" not in serialized
     assert "123" not in serialized
@@ -526,7 +527,7 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
     assert hook_payload == {
         "text": "Veja este produto em destaque",
         "source": "template",
-        "fallback_reason": "LOCAL_MODEL_NOT_CONFIGURED_OR_MISSING",
+        "fallback_reason": "AI_PROVIDER_NOT_CONFIGURED",
     }
     packages = db.rows("SELECT assets_json FROM content_packages WHERE assets_json!='[]'")
     assert packages
