@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.request import Request
@@ -27,7 +27,7 @@ from app.services.media import CreativeGenerator
 from app.services.llm import TemplateProvider
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
-from app.scheduler import run_due
+from app.scheduler import SCHEDULER_TIMEZONE, due_slot, run_due
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -266,6 +266,14 @@ def test_p2_dry_run_and_multichannel_package_are_idempotent_without_external_pub
     row = db.rows("SELECT body FROM content_packages WHERE id=?", (telegram["content_id"],))[0]
     assert f"/go/{offer_id}?" in row["body"]
     assert db.overview()["publications"] == 0
+
+
+def test_scheduler_slots_are_interpreted_in_brasilia_time() -> None:
+    instant_utc = datetime(2026, 9, 30, 13, 2, tzinfo=timezone.utc)
+    brasilia = instant_utc.astimezone(SCHEDULER_TIMEZONE)
+
+    assert brasilia.strftime("%Y-%m-%d %H:%M %z") == "2026-09-30 10:02 -0300"
+    assert due_slot(brasilia) == "2026-09-30T10:00"
 
 
 def test_scheduler_claims_same_slot_independently_per_adapter(tmp_path: Path) -> None:
