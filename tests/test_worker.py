@@ -727,6 +727,42 @@ def test_offline_e2e_worker_reaches_idle_and_restart_preserves_state(tmp_path: P
     assert reopened.overview()["conversions"] == 2
     assert reopened.worker_runtime()["heartbeat_at"] >= first_runtime["heartbeat_at"]
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    (
+        ({"value_cents": -1}, "value_cents"),
+        ({"commission_cents": -1}, "commission_cents"),
+        ({"merchant": "   "}, "merchant e network"),
+        ({"network": "   "}, "merchant e network"),
+        ({"timestamp": "   "}, "timestamp"),
+        ({"status": "UNKNOWN"}, "status"),
+    ),
+)
+def test_conversion_domain_rejects_invalid_core_values(
+    tmp_path: Path, changes: dict, message: str,
+) -> None:
+    db = Database(tmp_path / "conversion-invariants.db")
+    db.init()
+    data = {
+        "external_order_id": "pedido-invalido",
+        "offer_id": None,
+        "click_id": None,
+        "merchant": "Loja",
+        "network": "Rede",
+        "value_cents": 10000,
+        "commission_cents": 1000,
+        "status": "APPROVED",
+        "channel": None,
+        "campaign": None,
+        "timestamp": "2026-10-02T03:00:00+00:00",
+    }
+
+    with pytest.raises(ValueError, match=message):
+        db.import_conversion({**data, **changes})
+
+    assert db.rows("SELECT id FROM conversions") == []
+
+
 def test_conversion_reimport_preserves_original_attribution(tmp_path: Path) -> None:
     db = Database(tmp_path / "conversion-attribution.db")
     db.init()
