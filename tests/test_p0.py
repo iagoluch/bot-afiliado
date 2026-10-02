@@ -280,7 +280,6 @@ def test_telegram_oversized_content_is_rejected_before_queue(tmp_path: Path) -> 
     assert db.rows("SELECT id FROM publish_queue") == []
 
 
-@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
 def test_canonical_integers_reject_values_beyond_sqlite_range(db: Database) -> None:
     with pytest.raises(ValueError, match="limite de armazenamento"):
         money_to_cents(str(MAX_SQLITE_INTEGER))
@@ -313,6 +312,7 @@ def test_canonical_integers_reject_values_beyond_sqlite_range(db: Database) -> N
         })
 
 
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
 def test_money_parser_rejects_non_finite_values(value: str) -> None:
     with pytest.raises(ValueError, match="valor monetario invalido"):
         money_to_cents(value)
