@@ -19,7 +19,7 @@ try:
 except ImportError:  # pragma: no cover - available on Linux, absent on Windows.
     fcntl = None
 
-from app.config import Settings
+from app.config import Settings, validate_public_base_url
 from app.services.compliance import validate_distribution, validate_offer
 from app.services.site import offer_slug
 from app.services.social_content import build_content_specs
@@ -526,6 +526,7 @@ def copy_preview(
     provider: LLMProvider | None = None,
 ) -> dict:
     """Return a review-only draft; never writes content, scores or publish queues."""
+    validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
     validate_offer(offer)
     target = {
         "telegram": ("telegram", "text"),
