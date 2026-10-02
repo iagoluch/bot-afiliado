@@ -71,6 +71,44 @@ def fake_product(_: str) -> Image.Image:
     return Image.new("RGB", (640, 480), "#38bdf8")
 
 
+@pytest.mark.parametrize("terminal_status", ["PUBLISHED", "CANCELLED"])
+def test_p1_regeneration_never_reopens_terminal_social_queue(
+    tmp_path: Path, terminal_status: str,
+) -> None:
+    settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg.exe"))
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+    generator = CreativeGenerator(
+        settings.creatives_path,
+        ffmpeg_path=settings.ffmpeg_path,
+        image_loader=fake_product,
+    )
+    pipeline = P1Pipeline(db, settings, generator, provider=TemplateProvider())
+
+    first = pipeline.generate_offer(offer_id, "terminal-state")
+    feed = next(
+        package for package in first["packages"]
+        if package["channel"] == "instagram" and package["format"] == "feed"
+    )
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE social_queue SET status=?,required_action=NULL WHERE id=?",
+            (terminal_status, feed["queue_id"]),
+        )
+
+    second = pipeline.generate_offer(offer_id, "terminal-state")
+    regenerated = next(
+        package for package in second["packages"]
+        if package["channel"] == "instagram" and package["format"] == "feed"
+    )
+
+    assert regenerated["queue_id"] == feed["queue_id"]
+    assert regenerated["status"] == terminal_status
+    assert regenerated["required_action"] is None
+    assert db.get_social_queue(feed["queue_id"])["status"] == terminal_status
+
+
 def test_p1_generates_channel_specific_packages_and_safe_queue(tmp_path: Path) -> None:
     settings = settings_for(tmp_path, ffmpeg_path=str(tmp_path / "missing-ffmpeg.exe"))
     db = Database(settings.database_path)
