@@ -5,6 +5,16 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 TEMPLATE_DIR="$REPO_DIR/scripts/systemd"
 
+if [[ ! -x "$REPO_DIR/.venv/bin/python" ]]; then
+    printf 'Ambiente Python ausente. Execute scripts/install.sh antes de instalar os servicos.\n' >&2
+    exit 1
+fi
+
+if [[ ! -f "$REPO_DIR/.env" ]]; then
+    printf 'Configuracao .env ausente. Execute scripts/install.sh antes de instalar os servicos.\n' >&2
+    exit 1
+fi
+
 if [[ "${EUID}" -eq 0 ]]; then
     if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
         printf 'Execute como usuario normal: sudo scripts/install-systemd.sh\n' >&2
