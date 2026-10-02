@@ -111,6 +111,16 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
     app.mount("/media", StaticFiles(directory=settings.creatives_path, check_dir=False), name="media")
 
     @app.middleware("http")
+    async def protect_admin(request: Request, call_next):
+        path = request.url.path
+        protected = path == "/" or any(path == prefix or path.startswith(prefix + "/") for prefix in ADMIN_PREFIXES)
+        if protected and _admin_exposed(settings) and request.url.scheme != "https":
+            return Response(status_code=426, content="HTTPS obrigatorio")
+        if protected and settings.admin_password and not _authorized(request.headers.get("Authorization"), settings.admin_password):
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="BOT AFILIADO admin"'})
+        return await call_next(request)
+
+    @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -125,16 +135,6 @@ def create_app(app_settings: Settings | None = None, database: Database | None =
         if not request.url.path.startswith("/media/"):
             response.headers["Cache-Control"] = "no-store"
         return response
-
-    @app.middleware("http")
-    async def protect_admin(request: Request, call_next):
-        path = request.url.path
-        protected = path == "/" or any(path == prefix or path.startswith(prefix + "/") for prefix in ADMIN_PREFIXES)
-        if protected and _admin_exposed(settings) and request.url.scheme != "https":
-            return Response(status_code=426, content="HTTPS obrigatorio")
-        if protected and settings.admin_password and not _authorized(request.headers.get("Authorization"), settings.admin_password):
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="BOT AFILIADO admin"'})
-        return await call_next(request)
 
     @app.get("/health")
     def health(details: bool = Query(default=False)) -> dict:
