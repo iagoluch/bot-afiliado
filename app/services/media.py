@@ -36,8 +36,12 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def _approved_image_url(value: str, allowed_hosts: tuple[str, ...] = ()) -> bool:
-    parsed = urlsplit(value)
-    host = (parsed.hostname or "").lower()
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError:
+        return False
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
@@ -47,7 +51,7 @@ def _approved_image_url(value: str, allowed_hosts: tuple[str, ...] = ()) -> bool
         or not host
         or parsed.username
         or parsed.password
-        or parsed.port is not None
+        or port is not None
         or host == "localhost"
         or host.endswith(".local")
         or (address is not None and not address.is_global)
