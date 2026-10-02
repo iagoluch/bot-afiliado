@@ -87,13 +87,13 @@ class P1Pipeline:
                 value = saved.get("text")
                 source = saved.get("source")
                 if isinstance(value, str) and isinstance(source, str):
-                    valid = validated_hook(value)
+                    valid = validated_hook(value, offer=offer)
                     if valid is not None:
                         reason = saved.get("fallback_reason")
                         return valid, source, reason if isinstance(reason, str) else None
             except (ValueError, TypeError, AttributeError):
                 pass
-        return safe_hook(offer, "instagram_reel", provider=self.provider)
+        return safe_hook(offer, "instagram_reel", provider=self.provider, settings=self.settings)
 
     def generate_offer(self, offer_id: int, campaign_id: str = "organic", *, duration_scale: float = 1.0) -> dict[str, Any]:
         row = self.db.get_offer(offer_id)
