@@ -96,6 +96,31 @@ def test_database_context_closes_connection(tmp_path: Path) -> None:
         connection.execute("SELECT 1")
 
 
+def test_dynamic_web_responses_include_defensive_security_headers(tmp_path: Path) -> None:
+    settings = settings_for(
+        tmp_path,
+        public_base_url="https://afiliados.example",
+        admin_password="secret",
+    )
+    db = Database(settings.database_path)
+    db.init()
+    client = TestClient(create_app(settings, db), base_url="https://afiliados.example")
+
+    public = client.get("/offers")
+    assert public.status_code == 200
+    assert public.headers["x-content-type-options"] == "nosniff"
+    assert public.headers["x-frame-options"] == "DENY"
+    assert public.headers["referrer-policy"] == "no-referrer"
+    assert public.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+    assert "frame-ancestors 'none'" in public.headers["content-security-policy"]
+    assert public.headers["cache-control"] == "no-store"
+
+    rejected = client.get("/")
+    assert rejected.status_code == 401
+    assert rejected.headers["x-content-type-options"] == "nosniff"
+    assert rejected.headers["cache-control"] == "no-store"
+
+
 def test_admin_basic_auth_public_routes_and_secret_redaction(tmp_path: Path) -> None:
     secret = "unique-admin-password"
     settings = settings_for(
