@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from app.models import Offer, utc_now
+from app.models import Offer, normalize_utc_timestamp, utc_now
 
 
 MAX_CONTENT_JOB_ATTEMPTS = 5
@@ -356,6 +356,10 @@ class Database:
                 "commission_estimate_cents", "source_url", "affiliate_url", "deeplink", "collected_at",
                 "expires_at", "stock_status", "source_type"
             )}
+        offer_values["collected_at"] = normalize_utc_timestamp(
+            str(offer_values["collected_at"]),
+            field="collected_at",
+        )
         image_urls_json = json.dumps(offer.image_urls, ensure_ascii=False)
         tracking_metadata_json = json.dumps(offer.tracking_metadata, ensure_ascii=False, sort_keys=True)
         fingerprint_values = {
@@ -394,7 +398,7 @@ class Database:
             offer_id = int(row["id"])
             connection.execute(
                 "INSERT OR IGNORE INTO price_history(offer_id, price_cents, observed_at) VALUES(?,?,?)",
-                (offer_id, offer.current_price_cents, offer.collected_at),
+                (offer_id, offer.current_price_cents, offer_values["collected_at"]),
             )
             if content_campaign_id is not None:
                 campaign_id = content_campaign_id.strip()
@@ -1070,11 +1074,12 @@ class Database:
             raise ValueError("ID externo do pedido e obrigatorio")
         normalized["merchant"] = str(normalized.get("merchant") or "").strip()
         normalized["network"] = str(normalized.get("network") or "").strip()
-        normalized["timestamp"] = str(normalized.get("timestamp") or "").strip()
+        normalized["timestamp"] = normalize_utc_timestamp(
+            str(normalized.get("timestamp") or ""),
+            field="timestamp da conversao",
+        )
         if not normalized["merchant"] or not normalized["network"]:
             raise ValueError("merchant e network da conversao sao obrigatorios")
-        if not normalized["timestamp"]:
-            raise ValueError("timestamp da conversao e obrigatorio")
         if normalized.get("status") not in {"PENDING", "APPROVED", "REJECTED", "PAID"}:
             raise ValueError("status de conversao invalido")
         for field in ("value_cents", "commission_cents"):
