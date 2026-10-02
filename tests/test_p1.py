@@ -71,6 +71,82 @@ def fake_product(_: str) -> Image.Image:
     return Image.new("RGB", (640, 480), "#38bdf8")
 
 
+def test_terminal_content_package_is_immutable_but_draft_can_refresh(tmp_path: Path) -> None:
+    settings = settings_for(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    offer_id = insert_offer(db)
+
+    terminal_content = db.add_content(
+        offer_id,
+        "instagram",
+        "#publi\noriginal",
+        format="feed",
+        payload={"version": 1},
+        assets=["original.png"],
+        campaign_id="immutable",
+        content_key="immutable-key",
+    )
+    queue_id = db.enqueue_social(
+        offer_id,
+        terminal_content,
+        "instagram",
+        "feed",
+        "READY_FOR_PUBLISH",
+        "Revisar",
+    )
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE social_queue SET status='PUBLISHED',required_action=NULL WHERE id=?",
+            (queue_id,),
+        )
+
+    assert db.add_content(
+        offer_id,
+        "instagram",
+        "#publi\nmutated",
+        format="feed",
+        payload={"version": 2},
+        assets=["mutated.png"],
+        campaign_id="immutable",
+        content_key="immutable-key",
+    ) == terminal_content
+    stored = db.rows(
+        "SELECT body,payload_json,assets_json FROM content_packages WHERE id=?",
+        (terminal_content,),
+    )[0]
+    assert stored["body"] == "#publi\noriginal"
+    assert json.loads(stored["payload_json"]) == {"version": 1}
+    assert json.loads(stored["assets_json"]) == ["original.png"]
+
+    draft_content = db.add_content(
+        offer_id,
+        "instagram",
+        "#publi\ndraft-1",
+        format="story",
+        content_key="draft-key",
+    )
+    db.enqueue_social(
+        offer_id,
+        draft_content,
+        "instagram",
+        "story",
+        "READY_FOR_PUBLISH",
+        "Revisar",
+    )
+    db.add_content(
+        offer_id,
+        "instagram",
+        "#publi\ndraft-2",
+        format="story",
+        content_key="draft-key",
+    )
+    assert db.rows(
+        "SELECT body FROM content_packages WHERE id=?",
+        (draft_content,),
+    )[0]["body"] == "#publi\ndraft-2"
+
+
 @pytest.mark.parametrize("terminal_status", ["PUBLISHED", "CANCELLED"])
 def test_p1_regeneration_never_reopens_terminal_social_queue(
     tmp_path: Path, terminal_status: str,
