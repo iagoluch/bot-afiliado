@@ -34,7 +34,7 @@ if [[ ! -f "$REPO_DIR/.env" ]]; then
     printf 'Criado %s com DRY_RUN=true. Ajuste somente quando necessario.\n' "$REPO_DIR/.env"
 fi
 
-printf 'IA opcional: configure GEMINI_API_KEY no .env; Granite local permanece desligado por padrao.\n'
+printf 'IA opcional: configure CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN no .env; Granite local permanece desligado por padrao.\n'
 
 if ! require_command ffmpeg; then
     printf 'FFmpeg ausente: videos ficarao com asset pendente; imagens continuam disponiveis.\n' >&2
