@@ -219,6 +219,19 @@ def test_mercado_livre_manual_preserves_official_link_and_capabilities(tmp_path:
         adapter.import_offers(invalid)
 
 
+def test_mercado_livre_adapter_ignores_malformed_optional_metrics(tmp_path: Path) -> None:
+    source = (ROOT / "examples" / "mercadolivre_offers.sample.csv").read_text(encoding="utf-8")
+    path = tmp_path / "ml-optional-metrics.csv"
+    path.write_text(
+        source.replace(",4.9,5000,10,", ",invalid-rating,invalid-sales,invalid-rate,"),
+        encoding="utf-8",
+    )
+    offer = MercadoLivreManualAdapter().import_offers(path)[0]
+    assert offer.rating is None
+    assert offer.sales_count is None
+    assert offer.commission_rate is None
+
+
 def test_p2_dry_run_and_multichannel_package_are_idempotent_without_external_publish(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     db = Database(settings.database_path)
