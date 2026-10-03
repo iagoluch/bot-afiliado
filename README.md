@@ -2,6 +2,8 @@
 
 Motor local de ofertas com Shopee assistida, Amazon Creators API BR, Awin Product Feed e Mercado Livre assistido, curadoria determinística, Telegram, tracking, conversões, analytics, hub e criativos para Instagram/TikTok. Começa em `DRY_RUN=true`, funciona sem LLM e não publica em redes sociais automaticamente.
 
+**Primeiro uso:** siga o [MANUAL.md](MANUAL.md) para instalar, executar o fluxo completo em DRY_RUN, operar o worker/web e preparar a ativação real com segurança.
+
 O P1 gera:
 
 - catálogo pesquisável em `/offers` e página consciente em `/o/{slug}`;
