@@ -81,9 +81,12 @@ class MercadoLivreManualAdapter(AffiliateAdapter):
     def _validate_url(value: str, field: str, *, allow_short: bool) -> None:
         parsed = urlsplit(value)
         host = (parsed.hostname or "").lower()
-        allowed = host in {"mercadolivre.com", "www.mercadolivre.com", "mercadolivre.com.br", "www.mercadolivre.com.br"} or host.endswith(".mercadolivre.com.br")
+        allowed = host in {"mercadolivre.com", "www.mercadolivre.com", "mercadolivre.com.br", "www.mercadolivre.com.br", "meli.la"} or host.endswith(".mercadolivre.com.br")
         path = parsed.path.lower()
-        is_short = host in {"mercadolivre.com", "www.mercadolivre.com"} and path.startswith("/sec/")
+        is_short = (
+            (host in {"mercadolivre.com", "www.mercadolivre.com"} and path.startswith("/sec/"))
+            or (host == "meli.la" and len(path.strip("/")) > 2 and "/" not in path.strip("/"))
+        )
         is_product = host.startswith("produto.") or "/mlb-" in path or path.startswith("/p/mlb")
         if parsed.scheme != "https" or not allowed or not (is_product or (allow_short and is_short)):
             raise ValueError(f"{field} deve ser URL HTTPS oficial do Mercado Livre")
