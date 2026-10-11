@@ -349,10 +349,19 @@ class Worker:
                         lambda: self.pipeline.curate_and_queue([offer_id], str(job["campaign_id"])),
                         wait=self._wait,
                     )
-                result = retry_sqlite(
-                    lambda: self.content_pipeline.generate_offer(offer_id, str(job["campaign_id"])),
-                    wait=self._wait,
-                )
+                if self.settings.telegram_only_mode:
+                    # No Instagram/TikTok creatives, artificial images or FFmpeg work.
+                    result = {
+                        "offer_id": offer_id,
+                        "campaign_id": str(job["campaign_id"]),
+                        "status": "GENERATED",
+                        "mode": "telegram_only",
+                    }
+                else:
+                    result = retry_sqlite(
+                        lambda: self.content_pipeline.generate_offer(offer_id, str(job["campaign_id"])),
+                        wait=self._wait,
+                    )
             except _StopRequested:
                 raise
             except Exception as exc:
@@ -476,8 +485,10 @@ def _source_mode_from_env() -> str:
 
 def _source_from_env(settings: Settings) -> Path | None:
     if _source_mode_from_env() == "database":
-        if not settings.dry_run:
-            raise ValueError("WORKER_SOURCE_MODE=database permanece bloqueado fora de DRY_RUN")
+        if not settings.dry_run and not (
+            settings.telegram_only_mode and settings.telegram_real_enabled
+        ):
+            raise ValueError("WORKER_SOURCE_MODE=database em modo real exige TELEGRAM_ONLY_MODE e TELEGRAM_REAL_ENABLED")
         return None
     configured = os.getenv("WORKER_SOURCE_PATH", "").strip()
     if configured:
