@@ -11,10 +11,15 @@ from urllib.error import HTTPError, URLError
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 4096
+MAX_MEDIA_CAPTION_CHARS = 1024
 
 
 class TelegramAPIError(RuntimeError):
     pass
+
+
+class TelegramMediaRejected(TelegramAPIError):
+    """Telegram confirmed that this media was not accepted."""
 
 
 class TelegramDeliveryUncertain(TelegramAPIError):
@@ -89,6 +94,21 @@ class TelegramClient:
             raise TelegramAPIError(
                 f"mensagem Telegram deve ter entre 1 e {MAX_MESSAGE_CHARS} caracteres"
             )
+        return self._send("sendMessage", {"text": text})
+
+    def send_photo(self, text: str, photo_url: str) -> TelegramResult:
+        """Single Telegram message with original photo; fallback only on definite rejection.
+
+        A timeout/5xx is ambiguous: do not send text as a second message.
+        """
+        if not photo_url.startswith("https://") or len(text) > MAX_MEDIA_CAPTION_CHARS:
+            return self.send_message(text)
+        try:
+            return self._send("sendPhoto", {"photo": photo_url, "caption": text})
+        except TelegramMediaRejected:
+            return self.send_message(text)
+
+    def _send(self, method: str, params: dict[str, str]) -> TelegramResult:
         if self.dry_run:
             return TelegramResult(message_id="dry-run", dry_run=True)
         if not self.token or not self.chat_id:
@@ -98,8 +118,8 @@ class TelegramClient:
             if delay > 0:
                 self._sleep(delay)
         self._last_attempt_at = self._clock()
-        endpoint = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        body = urllib.parse.urlencode({"chat_id": self.chat_id, "text": text}).encode()
+        endpoint = f"https://api.telegram.org/bot{self.token}/{method}"
+        body = urllib.parse.urlencode({"chat_id": self.chat_id, **params}).encode()
         request = urllib.request.Request(endpoint, data=body, method="POST")
         try:
             with self.opener(request, timeout=20) as response:
@@ -114,6 +134,8 @@ class TelegramClient:
                 payload = {}
             if exc.code == 429 or payload.get("error_code") == 429:
                 raise TelegramRateLimit(_retry_after(payload)) from None
+            if method == "sendPhoto" and exc.code == 400:
+                raise TelegramMediaRejected("Telegram recusou a imagem") from None
             if exc.code >= 500 or exc.code in {408, 425}:
                 raise TelegramDeliveryUncertain("erro Telegram sem confirmacao de entrega") from None
             raise TelegramAPIError(f"Telegram recusou a mensagem (HTTP {exc.code})") from None
