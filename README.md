@@ -1,5 +1,8 @@
 # BOT AFILIADO — serviço local
 
+**NOVO: [Modo Telegram-only e lançamento no Acer](docs/TELEGRAM_ONLY_LANCAMENTO.md).** O envio direto de links oficiais, foto de produto e worker SQLite ficam disponíveis atrás de confirmação explícita. O website, Instagram e FFmpeg não são necessários neste modo. A coleta por API ainda depende de contratos e credenciais oficiais; não está implementada/homologada.
+
+
 Motor local de ofertas com Shopee assistida, Amazon Creators API BR, Awin Product Feed e Mercado Livre assistido, curadoria determinística, Telegram, tracking, conversões, analytics, hub e criativos para Instagram/TikTok. Começa em `DRY_RUN=true`, funciona sem LLM e não publica em redes sociais automaticamente.
 
 **Primeiro uso:** siga o [MANUAL.md](MANUAL.md) para instalar, executar o fluxo completo em DRY_RUN, operar o worker/web e preparar a ativação real com segurança.
