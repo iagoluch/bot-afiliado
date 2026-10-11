@@ -59,8 +59,10 @@ def _ingest_assisted(
     *,
     campaign: str,
 ) -> dict:
-    if not settings.dry_run:
-        raise RuntimeError("entrada assistida permanece bloqueada fora de DRY_RUN ate verificacao operacional")
+    if not settings.dry_run and not (
+        settings.telegram_only_mode and settings.telegram_real_enabled
+    ):
+        raise RuntimeError("entrada real exige TELEGRAM_ONLY_MODE=true e TELEGRAM_REAL_ENABLED=true")
     batch = prepare_assisted_offers(
         adapter,
         records,
@@ -134,6 +136,7 @@ def main() -> None:
     add_offer.add_argument("--sales-count")
     add_offer.add_argument("--commission-rate")
     add_offer.add_argument("--stock-status", choices=("IN_STOCK", "OUT_OF_STOCK", "UNKNOWN"), default="UNKNOWN")
+    add_offer.add_argument("--image-url", help="URL HTTPS oficial da foto do produto")
     add_offer.add_argument("--campaign", default="assisted")
     sub.add_parser(
         "collection-status",
@@ -291,6 +294,7 @@ def main() -> None:
             "sales_count": args.sales_count or "",
             "commission_rate": args.commission_rate or "",
             "stock_status": args.stock_status,
+            "image_urls": args.image_url or "",
         }
         result = _ingest_assisted(
             pipeline,
