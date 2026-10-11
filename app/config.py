@@ -168,6 +168,7 @@ class Settings:
     technology_offer_terms: tuple[str, ...] = DEFAULT_TECH_OFFER_TERMS
     telegram_only_mode: bool = False
     telegram_real_enabled: bool = False
+    telegram_max_posts_per_hour: int = 4
 
     @classmethod
     def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
@@ -239,6 +240,7 @@ class Settings:
             ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
             telegram_only_mode=_bool_env("TELEGRAM_ONLY_MODE", False),
             telegram_real_enabled=_bool_env("TELEGRAM_REAL_ENABLED", False),
+            telegram_max_posts_per_hour=_int_env("TELEGRAM_MAX_POSTS_PER_HOUR", 4),
             shopee_app_id=os.getenv("SHOPEE_APP_ID", "").strip() or None,
             shopee_secret=(
                 os.getenv("SHOPEE_SECRET") or os.getenv("SHOPEE_APP_SECRET") or ""
