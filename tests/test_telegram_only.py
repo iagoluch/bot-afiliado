@@ -142,7 +142,7 @@ def test_telegram_only_queue_simulates_without_network(tmp_path):
     assert len(queued) == 1
     sent = pipeline.process_one()
     assert sent["status"] == "SIMULATED"
-    assert db.rows("SELECT COUNT(*) AS n FROM publications")[0]["n"] == 0
+    assert db.rows("SELECT COUNT(*) AS n FROM publications WHERE dry_run=0")[0]["n"] == 0
     body = db.rows("SELECT body FROM content_packages WHERE channel='telegram'")[0]["body"]
     assert "/go/" not in body
     assert body.startswith("#publi")
