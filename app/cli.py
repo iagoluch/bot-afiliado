@@ -62,7 +62,7 @@ def _ingest_assisted(
     if not settings.dry_run and not (
         settings.telegram_only_mode and settings.telegram_real_enabled
     ):
-        raise RuntimeError("entrada real exige TELEGRAM_ONLY_MODE=true e TELEGRAM_REAL_ENABLED=true")
+        raise RuntimeError("entrada assistida bloqueada fora de DRY_RUN sem TELEGRAM_ONLY_MODE=true e TELEGRAM_REAL_ENABLED=true")
     batch = prepare_assisted_offers(
         adapter,
         records,
