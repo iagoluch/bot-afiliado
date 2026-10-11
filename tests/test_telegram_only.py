@@ -194,11 +194,12 @@ def test_real_rate_cap_defer_second_offer_without_claiming_queue(tmp_path):
     pipe = Pipeline(db, settings, telegram=Sender(), source_adapter="assisted")
     first = _item()
     second = _item()
+    second["title"] = "Mouse Gamer Sem Fio"
     second["external_product_id"] = "tech-456"
     second["source_url"] = "https://shopee.com.br/product/1/tech-456"
     second["affiliate_url"] = "https://s.shopee.com.br/tech-456"
     ids = pipe.ingest_offers(
-        prepare_assisted_offers("shopee", [first, second], terms=("ssd",)).offers,
+        prepare_assisted_offers("shopee", [first, second], terms=("ssd", "mouse")).offers,
         content_campaign_id="real-two-items",
     )
     assert len(pipe.curate_and_queue(ids, "real-two-items")) == 2
