@@ -72,3 +72,20 @@ def run_tick(db: Database, pipeline: Pipeline, source: Path, now: datetime) -> d
     if queue_result is not None:
         return {"status": "queue", "result": queue_result}
     return {"status": "idle"}
+
+
+def run_database_tick(
+    db: Database,
+    pipeline: Pipeline,
+    _source: Path | None,
+    _now: datetime | None,
+) -> dict:
+    """Processa somente estado persistido, sem reler ou renovar uma fonte.
+
+    A entrada assistida cria um content_job por fingerprint. O worker transforma
+    esse job em conteúdo e fila; este tick apenas drena a fila persistida.
+    """
+    queue_result = pipeline.process_one()
+    if queue_result is not None:
+        return {"status": "queue", "result": queue_result}
+    return {"status": "idle"}

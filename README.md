@@ -14,6 +14,8 @@ O P1 gera:
 
 O P2 adiciona adapters selecionáveis por `--adapter`: Awin lê CSV/gzip oficial e Mercado Livre preserva links gerados manualmente pelos meios oficiais. O contrato Amazon Creators API está coberto por mocks, mas o uso real e a importação operacional permanecem bloqueados até aprovação escrita e desenho de retenção compatível com os termos brasileiros.
 
+Shopee e Mercado Livre também aceitam entrada assistida sem CSV por `add-offer` ou JSON no stdin. O worker `database` consome esses fatos do SQLite uma vez por fingerprint, sempre em `DRY_RUN` nesta versão. A coleta automática permanece bloqueada até existirem credenciais e contrato oficial verificáveis; o projeto não usa scraping.
+
 O P3 adiciona painel administrativo, autenticação Basic fail closed quando exposto, analytics segmentado e feedback determinístico com volume mínimo. O hub público continua em `/offers`; painel e `/api/*` ficam separados.
 
 ## Notebook Acer com Lubuntu

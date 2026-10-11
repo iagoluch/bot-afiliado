@@ -25,9 +25,11 @@ class MercadoLivreManualAdapter(AffiliateAdapter):
     }
 
     def import_offers(self, path: Path) -> list[Offer]:
-        records = read_local_records(path, label="Mercado Livre")
+        return self.import_records(read_local_records(path, label="Mercado Livre"))
+
+    def import_records(self, records: list[dict[str, Any]]) -> list[Offer]:
         if not records:
-            raise ValueError("arquivo Mercado Livre nao contem ofertas")
+            raise ValueError("entrada Mercado Livre nao contem ofertas")
         return [self._normalize(record) for record in records]
 
     def _normalize(self, record: dict[str, Any]) -> Offer:

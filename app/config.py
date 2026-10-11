@@ -12,6 +12,13 @@ from urllib.parse import urlsplit
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ENV_FILE = PROJECT_ROOT / ".env"
 _ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_TECH_OFFER_TERMS = (
+    "audio", "cabo usb", "camera", "carregador", "celular", "computador",
+    "console", "fone", "gamer", "hardware", "impressora", "informatica",
+    "memoria ram", "monitor", "mouse", "notebook", "placa de video",
+    "power bank", "roteador", "smartphone", "smartwatch", "ssd", "tablet",
+    "teclado", "tecnologia",
+)
 
 
 def load_project_env(env_file: Path | str = PROJECT_ENV_FILE) -> dict[str, str]:
@@ -156,6 +163,9 @@ class Settings:
     ai_local_timeout_seconds: int = 20
     ai_circuit_failures: int = 2
     ai_circuit_cooldown_seconds: int = 300
+    shopee_app_id: str | None = None
+    shopee_secret: str | None = None
+    technology_offer_terms: tuple[str, ...] = DEFAULT_TECH_OFFER_TERMS
 
     @classmethod
     def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
@@ -225,6 +235,17 @@ class Settings:
             ai_local_timeout_seconds=_int_env("AI_LOCAL_TIMEOUT_SECONDS", 20),
             ai_circuit_failures=_int_env("AI_CIRCUIT_FAILURES", 2),
             ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
+            shopee_app_id=os.getenv("SHOPEE_APP_ID", "").strip() or None,
+            shopee_secret=(
+                os.getenv("SHOPEE_SECRET") or os.getenv("SHOPEE_APP_SECRET") or ""
+            ).strip() or None,
+            technology_offer_terms=tuple(
+                term.strip().lower()
+                for term in os.getenv(
+                    "TECH_OFFER_TERMS", ",".join(DEFAULT_TECH_OFFER_TERMS)
+                ).split(",")
+                if term.strip()
+            ),
         )
         validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
         if settings.ai_remote_provider not in {"cloudflare", "none"}:
@@ -241,4 +262,6 @@ class Settings:
             raise ValueError("AI_LOCAL_ENABLED exige GRANITE_CLI_PATH e GRANITE_MODEL_PATH")
         if settings.web_bind_port > 65535:
             raise ValueError("WEB_PORT deve ser menor ou igual a 65535")
+        if not settings.technology_offer_terms:
+            raise ValueError("TECH_OFFER_TERMS precisa conter ao menos um termo")
         return settings

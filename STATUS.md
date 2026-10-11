@@ -1,10 +1,10 @@
 # Status atual
 
-Data: 01/10/2026. Componentes P0 a P3 e runtime local para Lubuntu implementados e validados offline sem publicação social externa; o MVP real ainda depende de acessos e aprovações.
+Data: 11/10/2026. Componentes P0 a P3 e runtime local para Lubuntu implementados e validados offline sem publicação social externa; o MVP real ainda depende de acessos e credenciais de API.
 
 Repositório GitHub: https://github.com/iagoluch/bot-afiliado (`main`).
 
-A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP real faltam aprovação e credenciais Shopee, token/chat e canal Telegram aprovado, domínio HTTPS público aprovado e export oficial de conversões. Instagram/TikTok e demais programas têm aprovações próprias descritas abaixo. Nenhum envio real foi feito.
+O usuário confirmou aprovação nos programas de afiliados, mas não possui acessos de API. Para validar coleta automática real ainda faltam AppId/Secret e permissão autenticada da Shopee; para Mercado Livre não foi localizado nem concedido contrato oficial de API/feed afiliado. Envio real ainda exige verificar token/chat, canal Telegram público, domínio HTTPS e export oficial de conversões na instalação operacional. Nenhum envio real foi feito.
 
 ## Runtime Lubuntu 24/7
 
@@ -13,6 +13,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 - O token Cloudflare existe somente em memória e no header `Authorization: Bearer`; logs estruturados registram somente provider, status, duração, motivo de fallback e classe de erro. Prompt, resposta, URL e segredos não são gravados.
 - A IA continua restrita à camada editorial. Python determina preço, desconto, cupom, estoque, URLs, tracking, score, compliance, estados e publicação. O hook pode usar apenas vocabulário genérico e tokens sanitizados de título/categoria; alegações não verificadas e termos típicos de prompt injection são recusados.
 - `python -m app.worker` executa `run_tick`, fila Telegram em DRY_RUN e jobs P1 persistidos; heartbeat, idle, backoff, lock singleton e SIGTERM/SIGINT permanecem implementados. Jobs P1 são versionados pelos fatos e modo DRY_RUN/REAL, recuperam PROCESSING após crash, ignoram versões obsoletas e reutilizam conteúdo de fatos inalterados entre slots.
+- `WORKER_SOURCE_MODE=database` consome entrada assistida do SQLite sem CSV e sem reler/renovar a observação. Este modo e os comandos assistidos permanecem bloqueados fora de `DRY_RUN` até a primeira verificação operacional.
 - `runtime-status` e `/health?details=true` mostram somente banco, worker/heartbeat/ciclo, profundidade da fila, configuração segura de providers de IA, FFmpeg e DRY_RUN; nenhuma chave é exposta.
 - A suíte offline histórica validada no Acer tinha **164 testes aprovados**. A migração de IA ganhou CI próprio em GitHub Actions; o gate executa Python 3.11 com rede de IA desabilitada e precisa permanecer verde antes de considerar alterações concluídas.
 - Evidência histórica que motivou a retirada do Qwen da rota ativa: `qwen3.5:2b` chegou a responder cold em 199,823 s e warm em 5,057 s, mas também teve cold starts acima de 300/900 s sob pressão de HDD/swap; as respostas observadas ainda foram rejeitadas pelo validator. Esses dados ficam preservados como diagnóstico, não como configuração operacional.
@@ -21,7 +22,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | COMPONENT | STATUS | TESTED | EXTERNAL DEPENDENCY | NEXT ACTION |
 |---|---|---|---|---|
 | Pesquisa oficial | COMPLETE_LOCAL | Shopee, Telegram, Meta, TikTok, Amazon, Awin, Mercado Livre, Admitad e llama.cpp revisados | Login pode alterar conteúdo acessível | Revalidar antes de uso externo |
-| Shopee adapter | MANUAL_OR_PENDING | CSV/JSON, normalização e URLs | AppId/Secret e aprovação | Validar schema BR autenticado |
+| Shopee adapter | MANUAL_OR_PENDING | add-offer/JSON stdin, filtro tech, normalização e URLs | AppId/Secret e permissão API | Validar schema BR autenticado |
 | SQLite/modelo canônico | COMPLETE | Upsert, histórico, estados e migração P1 | Nenhuma | Usar dados reais aprovados |
 | Curadoria/deduplicação | COMPLETE | Score, histórico, fadiga, cooldown e desconto somente com duas observações anteriores | Histórico operacional | Ajustar pesos com dados reais |
 | Telegram | WAITING_FOR_CREDENTIALS | Template, DRY_RUN, 429, revalidação da fila, entrega incerta sem retry e reconciliação local | Token, chat e canal aprovado | Teste real controlado |
@@ -36,7 +37,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 | Instagram Reel Graph | CONTAINER_READY_MEDIA_PUBLISH_BLOCKED | 9 testes: contrato HTTP/CLI, DRY_RUN, gates, estados, segredo, asset vinculado e bloqueio sem rede | Conta/Page/permissão, host HTTPS, token e versão ativa; API de rótulo não confirmada | Criar/consultar container controlado; publicar manualmente com rótulo |
 | Amazon Creators API BR | WAITING_FOR_WRITTEN_APPROVAL_AND_RETENTION_DESIGN | OAuth/SearchItems/parser mockados, UA e limite 40 KB | Aprovação escrita e arquitetura de retenção | Manter rede/import/hub/publicação bloqueados |
 | Awin Product Feed | COMPLETE_LOCAL | CSV/gzip, limites, BRL, URL e idempotência | Feed oficial real; API de transações separada | Validar feed de programa aprovado |
-| Mercado Livre | COMPLETE_MANUAL | CSV/JSON e URL oficial preservada | Geração manual no portal/barra | Validar canal público aprovado |
+| Mercado Livre | COMPLETE_MANUAL | add-offer/JSON stdin e URL oficial preservada | Geração manual no portal/barra; sem contrato API/feed afiliado confirmado | Validar canal público aprovado |
 | Admitad Product Feed | WAITING_FOR_REAL_EXPORT | CSV local, BRL, limites, URL/SubID, CLI import-only e bloqueio de distribuição | Export de programa/ad space aprovados e regras do anunciante | Validar schema/link reais antes de habilitar ciclo |
 | Magalu, AliExpress, SHEIN | MANUAL_OR_PENDING | Pesquisa oficial e bloqueio testado no hub, fila e redirect | Conta, links reais, termos e contrato vigente por programa | Validar portal/export; só então considerar adapter |
 | Painel administrativo | COMPLETE_LOCAL | 14 páginas, Basic Auth, fail closed público e segredo oculto | HTTPS e senha para exposição | Operar localmente ou atrás de HTTPS |
@@ -48,7 +49,7 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 
 ## Dependências externas pendentes
 
-- Aprovação Shopee e cadastro/aprovação do site e dos canais.
+- Programas Shopee e Mercado Livre aprovados segundo o usuário em 11/10/2026; cadastro/aprovação do site e canais ainda precisa ser verificado.
 - AppId/Secret para contrato oficial brasileiro e token/chat Telegram para publicação real.
 - Domínio HTTPS público aprovado para o hub e tracking.
 - Conta profissional Meta, Page vinculada pelo Facebook Login, `instagram_content_publish`, versão Graph ativa e revisão editorial.
@@ -63,6 +64,8 @@ A automação da etapa anterior foi pausada em 01/10/2026. Para validar o MVP re
 
 ## Evidência de validação
 
+- Coleta assistida sem CSV: 135 testes direcionados passaram em `tests/test_collection.py`, `tests/test_worker.py`, `tests/test_p0.py`, `tests/test_p2.py`, `tests/test_config.py` e `tests/test_operation_events.py`. Após os ajustes finais do comando `add-offer`, `tests/test_collection.py` passou novamente com 11/11; outras 20 regressões passaram em `tests/test_discount_claims.py`, `tests/test_queue_freshness.py`, `tests/test_telegram_reconciliation.py` e `tests/test_telegram_limits.py`. Esses estágios têm sobreposição e não representam uma soma da suíte completa.
+- O ensaio descartável com geração P1 real foi interrompido (`exit 130`) durante I/O do Pillow e não conta como validação concluída de mídia ou FFmpeg. Nenhuma chamada real de rede, publicação no Telegram ou envio social ocorreu.
 - `scripts\test.bat`: 111 testes aprovados em 01/10/2026, com `DRY_RUN=true`, incluindo fluxo P0–P3, tracking, reconciliação Telegram, desconto histórico verificável, migração de rascunhos, feedback e limites. O banco operacional `data/affiliate.db` tinha 0 ofertas, 0 itens na fila, 0 publicações, 0 cliques e 0 conversões após o teste.
 - Validação direcionada da atribuição de conversões: 8 testes aprovados. Um relatório com `click_id` e `offer_id`/canal divergentes agora é recusado; campos ausentes são preenchidos pelo clique, sem alterar o registro anterior quando a reimportação conflita.
 - Revisão P3 Magalu/AliExpress/SHEIN: documentos oficiais ligados em `RESEARCH.md`; seis testes direcionados confirmam revisão obrigatória e que oferta SHEIN não aparece no hub, não entra na fila Telegram nem habilita `/go`. Dois testes Awin passaram após a mudança de prioridade da regra por merchant. Não houve integração de rede ou publicação externa.

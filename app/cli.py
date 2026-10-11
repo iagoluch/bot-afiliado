@@ -9,12 +9,14 @@ from typing import Callable
 from app.adapters.admitad_feed import AdmitadFeedAdapter
 from app.config import Settings
 from app.db import Database
+from app.models import utc_now
 from app.scheduler import run_tick, scheduler_now
+from app.services.collection import collection_status, prepare_assisted_offers, read_assisted_json
 from app.services.conversions import import_conversion_csv
-from app.services.llm import copy_preview
 from app.services.instagram_graph import InstagramReelPublisher
-from app.services.pipeline import Pipeline
+from app.services.llm import copy_preview
 from app.services.p1 import P1Pipeline
+from app.services.pipeline import Pipeline
 from app.worker import WorkerAlreadyRunning, WorkerLock, runtime_status, worker_lock_path
 
 
@@ -49,6 +51,36 @@ def _run_recorded(db: Database, mode: str, adapter: str, action: Callable[[], di
     return result
 
 
+def _ingest_assisted(
+    pipeline: Pipeline,
+    settings: Settings,
+    adapter: str,
+    records: list[dict],
+    *,
+    campaign: str,
+) -> dict:
+    if not settings.dry_run:
+        raise RuntimeError("entrada assistida permanece bloqueada fora de DRY_RUN ate verificacao operacional")
+    batch = prepare_assisted_offers(
+        adapter,
+        records,
+        terms=settings.technology_offer_terms,
+    )
+    if not batch.offers:
+        raise ValueError("nenhuma oferta tecnologica aceita pelo filtro configurado")
+    campaign_id = f"{campaign.strip() or 'assisted'}-{adapter}-{batch.source_key[:12]}"
+    offer_ids = pipeline.ingest_offers(batch.offers, content_campaign_id=campaign_id)
+    return {
+        "status": "QUEUED_FOR_LOCAL_WORKER",
+        "adapter": adapter,
+        "accepted": len(offer_ids),
+        "rejected_non_technology": batch.rejected_non_technology,
+        "offer_ids": offer_ids,
+        "campaign_id": campaign_id,
+        "external_publications": 0,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Motor local de ofertas afiliadas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -74,6 +106,39 @@ def main() -> None:
     importer.add_argument("--adapter", choices=("shopee", "awin", "mercadolivre", "admitad"), default="shopee")
     importer.add_argument("--merchant-name", help="Nome do programa aprovado no export Admitad")
     importer.add_argument("--delimiter", default=",", help="Separador do CSV Admitad")
+    assisted = sub.add_parser(
+        "assisted-import",
+        help="Importa ofertas oficiais por JSON no stdin, sem CSV, scraping ou rede",
+    )
+    assisted.add_argument("--adapter", choices=("shopee", "mercadolivre"), required=True)
+    assisted.add_argument("--campaign", default="assisted")
+    add_offer = sub.add_parser(
+        "add-offer",
+        help="Adiciona uma oferta oficial por argumentos e entrega ao worker local",
+    )
+    add_offer.add_argument("--adapter", choices=("shopee", "mercadolivre"), required=True)
+    add_offer.add_argument("--external-id", required=True)
+    add_offer.add_argument("--title", required=True)
+    add_offer.add_argument("--price", required=True)
+    add_offer.add_argument("--source-url", required=True)
+    add_offer.add_argument("--affiliate-url", required=True)
+    add_offer.add_argument("--collected-at", default=None)
+    add_offer.add_argument("--expires-at")
+    add_offer.add_argument("--category", default="")
+    add_offer.add_argument("--brand", default="")
+    add_offer.add_argument("--description", default="")
+    add_offer.add_argument("--coupon")
+    add_offer.add_argument("--coupon-expiration")
+    add_offer.add_argument("--shipping")
+    add_offer.add_argument("--rating")
+    add_offer.add_argument("--sales-count")
+    add_offer.add_argument("--commission-rate")
+    add_offer.add_argument("--stock-status", choices=("IN_STOCK", "OUT_OF_STOCK", "UNKNOWN"), default="UNKNOWN")
+    add_offer.add_argument("--campaign", default="assisted")
+    sub.add_parser(
+        "collection-status",
+        help="Mostra bloqueios e capabilities de coleta sem abrir conexao externa",
+    )
     amazon = sub.add_parser("amazon-search")
     amazon.add_argument("keywords")
     amazon.add_argument("--item-count", type=int, default=10)
@@ -199,6 +264,43 @@ def main() -> None:
             }
         else:
             result = {"adapter": args.adapter, "offers": pipeline.ingest_source(args.source, args.adapter)}
+    elif args.command == "assisted-import":
+        result = _ingest_assisted(
+            pipeline,
+            settings,
+            args.adapter,
+            read_assisted_json(sys.stdin),
+            campaign=args.campaign,
+        )
+    elif args.command == "add-offer":
+        record = {
+            "external_product_id": args.external_id,
+            "title": args.title,
+            "current_price": args.price,
+            "source_url": args.source_url,
+            "affiliate_url": args.affiliate_url,
+            "collected_at": args.collected_at or utc_now(),
+            "expires_at": args.expires_at or "",
+            "category": args.category,
+            "brand": args.brand,
+            "description": args.description,
+            "coupon": args.coupon or "",
+            "coupon_expiration": args.coupon_expiration or "",
+            "shipping": args.shipping or "",
+            "rating": args.rating or "",
+            "sales_count": args.sales_count or "",
+            "commission_rate": args.commission_rate or "",
+            "stock_status": args.stock_status,
+        }
+        result = _ingest_assisted(
+            pipeline,
+            settings,
+            args.adapter,
+            [record],
+            campaign=args.campaign,
+        )
+    elif args.command == "collection-status":
+        result = collection_status(settings)
     elif args.command == "amazon-search":
         raise RuntimeError("Amazon live bloqueada: aguarda aprovacao escrita e desenho de retencao validado")
     elif args.command == "social-queue":

@@ -176,7 +176,16 @@ def test_adapter_rejects_non_shopee_affiliate_url(tmp_path: Path) -> None:
         ShopeeManualAdapter().import_offers(source)
 
 
-def test_offer_timestamps_are_canonicalized_before_price_history(db: Database) -> None:
+def test_offer_timestamps_are_canonicalized_before_price_history(
+    db: Database, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            fixed = cls.fromisoformat("2026-10-02T12:00:00+00:00")
+            return fixed if tz is None else fixed.astimezone(tz)
+
+    monkeypatch.setattr("app.services.compliance.datetime", FrozenDateTime)
     offer = Offer(
         merchant="Shopee",
         affiliate_network="Shopee Afiliados",
