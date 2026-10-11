@@ -4,10 +4,10 @@ Monólito Python local com SQLite, worker contínuo e web separada. Não usa Doc
 
 ```text
 Fontes oficiais/assistidas
-  ├─ Shopee CSV/JSON com link oficial
+  ├─ Shopee add-offer/JSON stdin com link oficial (API automática bloqueada)
   ├─ Amazon Creators API BR: contrato mockado, uso operacional bloqueado
   ├─ Awin Product Feed CSV/gzip
-  ├─ Mercado Livre CSV/JSON com link oficial manual
+  ├─ Mercado Livre add-offer/JSON stdin com link oficial manual (API/feed não confirmado)
   └─ Admitad export CSV de publisher: somente import local, aguardando export real
   -> adapter selecionado -> normalização -> offers + price_history
   -> compliance -> score determinístico -> cooldown
@@ -27,6 +27,7 @@ Fontes oficiais/assistidas
 ## Responsabilidades
 
 - `app/adapters`: fronteira por programa e capabilities declaradas.
+- `app/services/collection.py`: entrada assistida limitada, filtro determinístico de tecnologia e diagnóstico fail closed; não abre rede.
 - `app/adapters/amazon_creators.py`: OAuth em memória, SearchItems BR, resposta limitada e parser estrito. Recusa redirects para não encaminhar segredo/Bearer.
 - `app/adapters/awin_feed.py`: leitura limitada e em streaming de CSV/gzip oficial; BRL obrigatório.
 - `app/adapters/mercadolivre_manual.py`: importação assistida de URL oficial, sem API inventada.
@@ -39,7 +40,7 @@ Fontes oficiais/assistidas
 - `app/services/pipeline.py`: pipeline P0 e estados da fila Telegram.
 - `app/services/social_content.py`: copy, roteiro e hashtags específicos por canal.
 - `app/services/llm.py`: provider Cloudflare Workers AI por REST com token Bearer somente em header, Granite opcional via llama.cpp, fallback em cadeia, circuit breaker e validação conservadora de hook; a IA não calcula fatos nem controla publicação.
-- `app/worker.py`: loop único de `run_tick`, geração P1 sequencial por oferta, lock exclusivo, heartbeat SQLite e backoff.
+- `app/worker.py`: loop único, em modo `file` com `run_tick` ou em modo `database` sem reler fonte; geração P1 sequencial por oferta, lock exclusivo, heartbeat SQLite e backoff.
 - `app/services/media.py`: imagens determinísticas, download restrito de imagem oficial e chamada segura ao FFmpeg sem shell.
 - `app/services/p1.py`: orquestra criativos e estados da fila social.
 - `app/services/instagram_graph.py`: cliente fixo da Meta e máquina de estados somente para Reels; token fica no header e falha ambígua nunca é repetida automaticamente.
@@ -103,7 +104,7 @@ Admitad permanece `WAITING_FOR_REAL_EXPORT`: só `import-offers --adapter admita
 
 ## Worker e observabilidade no Lubuntu
 
-`app.worker` mantém um lock local exclusivo durante toda a execução. Em cada tick, `run_tick` processa um slot de ingestão ou um item da fila persistente; após um ciclo, o P1 gera ContentPackages e assets por oferta, isolando falhas individuais. Idle dorme 30 s por padrão; falhas repetidas usam backoff progressivo. O heartbeat e último ciclo ficam em SQLite e são lidos por `runtime-status`; a consulta expõe somente estado seguro, sem URL afiliada, conteúdo ou segredo. O processo respeita SIGTERM/SIGINT e libera o lock. A fila SQLite conserva estados de retry e `PROCESSING` para reconciliação após reinício, sem reenvio automático de entrega incerta.
+`app.worker` mantém um lock local exclusivo durante toda a execução. No modo `file`, `run_tick` processa um slot de ingestão ou um item da fila persistente. No modo `database`, ele não abre nem relê feed: um `content_job` criado pela entrada assistida é consumido uma vez por fingerprint, passa pela mesma curadoria/compliance e cria a fila Telegram idempotente antes do P1. O worker nunca renova `collected_at`, validade ou histórico de preço. Idle dorme 30 s por padrão; falhas repetidas usam backoff progressivo. O heartbeat e último ciclo ficam em SQLite e são lidos por `runtime-status`; a consulta expõe somente estado seguro, sem URL afiliada, conteúdo ou segredo. O processo respeita SIGTERM/SIGINT e libera o lock. A fila SQLite conserva estados de retry e `PROCESSING` para reconciliação após reinício, sem reenvio automático de entrega incerta.
 
 As units systemd executam worker e web como usuário normal, com diretório do clone, restart somente em falha e web em `127.0.0.1:8000`. No alvo Acer (i3-6100U, 4 GB, HDD, sem GPU), LLM local permanece desligada por padrão: a operação usa Cloudflare Workers AI quando houver Account ID + API token ou TemplateProvider sem rede. Granite local só entra após homologação explícita. FFmpeg ausente degrada somente a geração de vídeo, preservando imagens e asset pendente.
 

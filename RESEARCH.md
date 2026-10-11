@@ -1,6 +1,6 @@
 # Pesquisa oficial — P0 a P3
 
-Pesquisa realizada em 30/09/2026 e revisada em 01/10/2026. A implementação só afirma capacidades que aparecem em documentação oficial acessível. Nenhum endpoint privado, scraping ou contrato inferido foi usado.
+Pesquisa realizada em 30/09/2026 e revisada em 11/10/2026. A implementação só afirma capacidades que aparecem em documentação oficial acessível. Nenhum endpoint privado, scraping ou contrato inferido foi usado.
 
 ## Shopee Afiliados
 
@@ -9,7 +9,7 @@ Pesquisa realizada em 30/09/2026 e revisada em 01/10/2026. A implementação só
 - O [explorer brasileiro](https://open-api.affiliate.shopee.com.br/explorer) exige AppId e Secret. Sem credenciais, o schema GraphQL brasileiro não pôde ser validado.
 - O [portal brasileiro](https://affiliate.shopee.com.br/open_api) exige login e JavaScript.
 
-Decisão P0: `integration_status = MANUAL_OR_PENDING`. O adapter importa CSV/JSON com link já gerado por meio oficial. A URL afiliada fica intacta. A futura integração autenticada permanece `WAITING_FOR_CREDENTIALS`; não há código com query GraphQL inventada.
+Em 11/10/2026 o usuário confirmou aprovação no programa, mas ausência de AppId/Secret e acesso de API. O explorer mostrou somente exemplo de resposta e `NO SCHEMA AVAILABLE`; isso não comprova contrato autenticado utilizável. Decisão P0: `integration_status = MANUAL_OR_PENDING`. O adapter aceita entrada assistida com link já gerado por meio oficial. A URL afiliada fica intacta. A futura integração autenticada permanece `WAITING_FOR_CREDENTIALS`; não há código com query GraphQL inventada.
 
 ## Telegram
 
@@ -36,7 +36,7 @@ A [Bot API oficial](https://core.telegram.org/bots/api) documenta `sendMessage`,
 
 - O [checklist oficial](https://www.mercadolivre.com.br/l/checklist), a página [Gere seus links](https://www.mercadolivre.com.br/l/afiliados-gere-seus-links) e as [perguntas frequentes](https://www.mercadolivre.com.br/l/primeiros-passos-perguntas-frequentes-para-afiliados) descrevem geração manual pelo portal/barra oficial.
 - A página de [direcionamento de visitas](https://www.mercadolivre.com.br/l/afiliados-direcionamento-de-visitas) orienta uso em site, blog e redes sociais próprias e não autoriza redirecionamento automático.
-- Não foi localizada API oficial para gerar links afiliados. O adapter fica `MANUAL_OR_PENDING`, aceita somente URL oficial já gerada e a preserva inteira, inclusive etiquetas.
+- Não foi localizada API ou feed oficial do programa de afiliados para descoberta/geração de links. APIs de seller não são tratadas como API afiliada. O usuário não recebeu contrato ou credencial de API para esse programa. O adapter fica `MANUAL_OR_PENDING`, aceita somente URL oficial já gerada e a preserva inteira, inclusive etiquetas.
 - O checklist permite canais públicos, incluindo Telegram público, e proíbe grupos privados, publicidade em buscadores e mídia offline. Essas restrições permanecem responsabilidade operacional antes da publicação.
 
 ## Plataformas avaliadas para fases futuras

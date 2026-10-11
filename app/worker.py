@@ -16,7 +16,7 @@ from typing import Any
 from app.config import Settings
 from app.db import Database
 from app.models import utc_now
-from app.scheduler import run_tick, scheduler_now
+from app.scheduler import run_database_tick, run_tick, scheduler_now
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
 
@@ -236,6 +236,8 @@ def runtime_status(
         },
         "ffmpeg_available": bool(ffmpeg_probe(settings)),
         "dry_run": settings.dry_run,
+        "telegram_only_mode": settings.telegram_only_mode,
+        "telegram_real_enabled": settings.telegram_real_enabled,
     }
 
 
@@ -246,11 +248,11 @@ class Worker:
         settings: Settings,
         pipeline: Pipeline,
         content_pipeline: P1Pipeline,
-        source: Path,
+        source: Path | None,
         *,
         idle_seconds: float,
         error_backoff_seconds: float,
-        tick: Callable[[Database, Pipeline, Path, datetime], dict[str, Any]] = run_tick,
+        tick: Callable[[Database, Pipeline, Path | None, datetime | None], dict[str, Any]] = run_tick,
         stop_event: threading.Event | None = None,
         heartbeat_interval: float = 15.0,
     ):
@@ -344,10 +346,24 @@ class Worker:
                 generated.append({"offer_id": offer_id, "status": "SUPERSEDED"})
                 continue
             try:
-                result = retry_sqlite(
-                    lambda: self.content_pipeline.generate_offer(offer_id, str(job["campaign_id"])),
-                    wait=self._wait,
-                )
+                if self.source is None:
+                    retry_sqlite(
+                        lambda: self.pipeline.curate_and_queue([offer_id], str(job["campaign_id"])),
+                        wait=self._wait,
+                    )
+                if self.settings.telegram_only_mode:
+                    # No Instagram/TikTok creatives, artificial images or FFmpeg work.
+                    result = {
+                        "offer_id": offer_id,
+                        "campaign_id": str(job["campaign_id"]),
+                        "status": "GENERATED",
+                        "mode": "telegram_only",
+                    }
+                else:
+                    result = retry_sqlite(
+                        lambda: self.content_pipeline.generate_offer(offer_id, str(job["campaign_id"])),
+                        wait=self._wait,
+                    )
             except _StopRequested:
                 raise
             except Exception as exc:
@@ -462,7 +478,20 @@ class Worker:
                 self._warn_once("heartbeat", "worker_heartbeat_failed", exc)
 
 
-def _source_from_env(settings: Settings) -> Path:
+def _source_mode_from_env() -> str:
+    mode = os.getenv("WORKER_SOURCE_MODE", "file").strip().lower() or "file"
+    if mode not in {"file", "database"}:
+        raise ValueError("WORKER_SOURCE_MODE deve ser file ou database")
+    return mode
+
+
+def _source_from_env(settings: Settings) -> Path | None:
+    if _source_mode_from_env() == "database":
+        if not settings.dry_run and not (
+            settings.telegram_only_mode and settings.telegram_real_enabled
+        ):
+            raise ValueError("WORKER_SOURCE_MODE=database bloqueado fora de DRY_RUN sem TELEGRAM_ONLY_MODE=true e TELEGRAM_REAL_ENABLED=true")
+        return None
     configured = os.getenv("WORKER_SOURCE_PATH", "").strip()
     if configured:
         source = Path(configured)
@@ -476,11 +505,16 @@ def _source_from_env(settings: Settings) -> Path:
 
 def main() -> None:
     settings = Settings.from_env()
+    source_mode = _source_mode_from_env()
     source = _source_from_env(settings)
-    adapter = os.getenv("WORKER_ADAPTER", "shopee").strip().lower()
-    if adapter not in {"shopee", "awin", "mercadolivre"}:
+    adapter = (
+        "assisted"
+        if source_mode == "database"
+        else os.getenv("WORKER_ADAPTER", "shopee").strip().lower()
+    )
+    if adapter not in {"shopee", "awin", "mercadolivre", "assisted"}:
         raise ValueError("WORKER_ADAPTER deve ser shopee, awin ou mercadolivre")
-    if not source.is_file():
+    if source is not None and not source.is_file():
         raise FileNotFoundError(f"fonte do worker nao encontrada: {source}")
 
     lock_path = worker_lock_path(settings)
@@ -496,6 +530,7 @@ def main() -> None:
                 source,
                 idle_seconds=_positive_float_env("WORKER_IDLE_SECONDS", 30.0),
                 error_backoff_seconds=_positive_float_env("WORKER_ERROR_BACKOFF_SECONDS", 60.0),
+                tick=run_database_tick if source_mode == "database" else run_tick,
             )
             previous_handlers: dict[int, Any] = {}
             for signum in (signal.SIGINT, signal.SIGTERM):

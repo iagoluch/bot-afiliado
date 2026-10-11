@@ -147,6 +147,44 @@ Esse comando só grava as ofertas. O export brasileiro real ainda precisa ser co
 
 Feeds Awin e arquivos manuais Shopee/Mercado Livre recebem janela de 24 horas quando não há validade anterior. Reimporte dados oficiais atualizados antes de gerar conteúdo novamente.
 
+## Coleta sem CSV: entrada assistida em DRY_RUN
+
+Consulte primeiro o diagnóstico local. Ele não abre rede nem mostra segredos:
+
+```bash
+.venv/bin/python -m app.cli collection-status
+```
+
+Enquanto não houver AppId/Secret e permissão autenticada da Shopee, ou contrato oficial de API/feed afiliado do Mercado Livre, a coleta automática fica explicitamente bloqueada. O fallback aceita somente dados e links obtidos pelos portais oficiais; não faz scraping.
+
+Para uma oferta, use argumentos. `collected-at` deve representar a hora real da observação e a validade padrão é 24 horas:
+
+```bash
+.venv/bin/python -m app.cli add-offer --adapter shopee \
+  --external-id 123 --title "Notebook exemplo" --category "Informática" \
+  --price 2499.90 --source-url "https://shopee.com.br/product/1/123" \
+  --affiliate-url "https://shope.ee/link-oficial" \
+  --collected-at "2026-10-11T15:00:00-03:00" --stock-status IN_STOCK \
+  --rating 4.9 --sales-count 5000 --commission-rate 20 \
+  --coupon TECH10 --shipping "frete gratis"
+```
+
+Rating, volume, comissão, cupom e frete são opcionais; informe somente valores mostrados pela fonte oficial. Sem desconto comprovado pelo histórico, o conteúdo não alega preço anterior nem percentual. Para várias ofertas, envie uma lista JSON ou `{"offers": [...]}` pelo stdin, com os mesmos campos dos exemplos e `collected_at` obrigatório:
+
+```bash
+.venv/bin/python -m app.cli assisted-import --adapter mercadolivre < ofertas.json
+```
+
+Isso grava ofertas e jobs locais, mas não publica. Configure o worker para consumir somente o SQLite, sem reler arquivo:
+
+```env
+DRY_RUN=true
+WORKER_SOURCE_MODE=database
+TECH_OFFER_TERMS=notebook,smartphone,ssd,monitor,teclado,mouse
+```
+
+Depois execute `bash scripts/start.sh worker`. O worker aplica os mesmos gates de preço, validade, compliance, score, deduplicação e Telegram. Reimportar os mesmos fatos não cria outro job nem outra observação de preço. Oferta vencida falha fechada. Esta versão recusa `add-offer`, `assisted-import` e o worker `database` quando `DRY_RUN=false`; libere o fluxo real somente após validar credenciais, canal, links e uma execução controlada.
+
 ## P3: painel administrativo e analytics
 
 Em desenvolvimento local, `scripts\start.bat` usa `WEB_HOST=127.0.0.1`; abra `/` para Overview e `/offers` para o hub público. O painel inclui Overview, Offers, Queue, Published, Content, Channels, Merchants, Affiliate Programs, Clicks, Conversions, Revenue, Analytics, Compliance e Settings.
@@ -268,7 +306,7 @@ bash scripts/install.sh
 
 `install.sh` cria `.venv`, instala as dependências Python e cria os diretórios locais. Não baixa nenhuma IA. FFmpeg ausente produz aviso e mantém imagens/storyboards com vídeo pendente.
 
-Mantenha `DRY_RUN=true` em `.env`. Com `WORKER_SOURCE_PATH` vazio, o worker usa `examples/shopee_offers.sample.csv` somente em DRY_RUN. Teste e inicie os processos:
+Mantenha `DRY_RUN=true` em `.env`. Com `WORKER_SOURCE_MODE=file` e `WORKER_SOURCE_PATH` vazio, o worker usa `examples/shopee_offers.sample.csv` somente em DRY_RUN. Para as ofertas assistidas acima, use `WORKER_SOURCE_MODE=database`; nesse modo nenhum arquivo é aberto. Teste e inicie os processos:
 
 ```bash
 bash scripts/test.sh
@@ -286,4 +324,3 @@ bash scripts/status.sh
 ```
 
 `runtime-status` mostra banco, heartbeat, último ciclo, profundidade da fila, configuração segura dos providers de IA, FFmpeg e DRY_RUN sem exibir chaves. Scripts e units delegam a leitura de `.env` ao mesmo parser Python; as units usam o usuário normal, `WorkingDirectory` do clone atual e `Restart=on-failure` após 10 s. Consulte `journalctl -u bot-afiliado-worker.service -u bot-afiliado-web.service -n 100 --no-pager`; para reiniciar, use `sudo systemctl restart bot-afiliado-worker.service bot-afiliado-web.service`.
-

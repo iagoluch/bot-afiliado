@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 
 def brl(cents: int | None) -> str:
@@ -71,3 +71,64 @@ def telegram_tracking_url(
         parameters["publication_key"] = publication_key
     query = urlencode(parameters)
     return f"{public_base_url.rstrip('/')}/go/{offer_id}?{query}"
+
+
+def telegram_direct_message(offer: Mapping[str, Any]) -> str:
+    """Copy direta para Telegram; utiliza exclusivamente fatos comprovados."""
+    discount = verified_discount(offer)
+    title = str(offer["title"]).strip()[:180]
+    merchant = str(offer["merchant"]).strip()
+    url = str(offer["affiliate_url"]).strip()
+    if not url.startswith("https://"):
+        raise ValueError("link afiliado HTTPS obrigatorio")
+    lines = [
+        "#publi", "",
+        "🔥 PREÇO CAIU!" if discount else "🔥 ACHADO TECH!",
+        title, "",
+    ]
+    if discount:
+        lines.append(f"🏷 De {brl(discount[0])}")
+    lines.append(f"💰 {brl(int(offer['current_price_cents']))}")
+    if discount:
+        lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
+    lines.append(f"🏬 {merchant}")
+    if offer.get("shipping"):
+        lines.append(f"📦 {str(offer['shipping']).strip()[:120]}")
+    if offer.get("coupon"):
+        lines.append(f"🎟 Cupom: {str(offer['coupon']).strip()[:80]}")
+    lines.extend(["", "👇 Confira pelo link oficial:", url])
+    return "\n".join(lines)
+
+
+def telegram_product_photo(offer: Mapping[str, Any]) -> str | None:
+    """Only official product-host HTTPS photos, never page scraping."""
+    raw: Any = offer.get("image_urls")
+    if raw is None:
+        raw = offer.get("image_urls_json")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(raw, list):
+        return None
+    for entry in raw:
+        if not isinstance(entry, str):
+            continue
+        try:
+            parsed = urlsplit(entry)
+            host = (parsed.hostname or "").lower()
+            safe = (
+                parsed.scheme == "https"
+                and parsed.port in (None, 443)
+                and not parsed.username and not parsed.password
+                and not parsed.fragment
+                and (host == "http2.mlstatic.com"
+                     or host == "susercontent.com"
+                     or host.endswith(".susercontent.com"))
+            )
+        except ValueError:
+            safe = False
+        if safe:
+            return entry
+    return None

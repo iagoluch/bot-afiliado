@@ -1,5 +1,8 @@
 # BOT AFILIADO — serviço local
 
+**NOVO: [Modo Telegram-only e lançamento no Acer](docs/TELEGRAM_ONLY_LANCAMENTO.md).** O envio direto de links oficiais, foto de produto e worker SQLite ficam disponíveis atrás de confirmação explícita. O website, Instagram e FFmpeg não são necessários neste modo. A coleta por API ainda depende de contratos e credenciais oficiais; não está implementada/homologada.
+
+
 Motor local de ofertas com Shopee assistida, Amazon Creators API BR, Awin Product Feed e Mercado Livre assistido, curadoria determinística, Telegram, tracking, conversões, analytics, hub e criativos para Instagram/TikTok. Começa em `DRY_RUN=true`, funciona sem LLM e não publica em redes sociais automaticamente.
 
 **Primeiro uso:** siga o [MANUAL.md](MANUAL.md) para instalar, executar o fluxo completo em DRY_RUN, operar o worker/web e preparar a ativação real com segurança.
@@ -13,6 +16,8 @@ O P1 gera:
 - fila local de revisão/publicação, sem OAuth ou chamada externa.
 
 O P2 adiciona adapters selecionáveis por `--adapter`: Awin lê CSV/gzip oficial e Mercado Livre preserva links gerados manualmente pelos meios oficiais. O contrato Amazon Creators API está coberto por mocks, mas o uso real e a importação operacional permanecem bloqueados até aprovação escrita e desenho de retenção compatível com os termos brasileiros.
+
+Shopee e Mercado Livre também aceitam entrada assistida sem CSV por `add-offer` ou JSON no stdin. O worker `database` consome esses fatos do SQLite uma vez por fingerprint, sempre em `DRY_RUN` nesta versão. A coleta automática permanece bloqueada até existirem credenciais e contrato oficial verificáveis; o projeto não usa scraping.
 
 O P3 adiciona painel administrativo, autenticação Basic fail closed quando exposto, analytics segmentado e feedback determinístico com volume mínimo. O hub público continua em `/offers`; painel e `/api/*` ficam separados.
 
