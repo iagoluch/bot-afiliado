@@ -174,3 +174,56 @@ def test_real_delivery_with_mock_telegram_and_direct_link(tmp_path):
     assert posted[0][1].startswith("https://down-br.img.susercontent.com/")
     assert db.rows("SELECT COUNT(*) AS n FROM publications")[0]["n"] == 1
     assert p.process_one() is None
+
+
+def test_real_rate_cap_defer_second_offer_without_claiming_queue(tmp_path):
+    settings = _settings(
+        tmp_path, dry_run=False, telegram_real_enabled=True,
+        telegram_bot_token="dummy", telegram_chat_id="@publicchannel",
+        channel_visibility={"telegram": "public"}, telegram_max_posts_per_hour=1,
+    )
+    db = Database(settings.database_path)
+    db.init()
+    sent = []
+    class Sender:
+        def send_message(self, text):
+            sent.append(text)
+            return type("R", (), {"dry_run": False, "message_id": str(len(sent))})()
+        def send_photo(self, text, photo):
+            return self.send_message(text)
+    pipe = Pipeline(db, settings, telegram=Sender(), source_adapter="assisted")
+    first = _item()
+    second = _item()
+    second["external_product_id"] = "tech-456"
+    second["source_url"] = "https://shopee.com.br/product/1/tech-456"
+    second["affiliate_url"] = "https://s.shopee.com.br/tech-456"
+    ids = pipe.ingest_offers(
+        prepare_assisted_offers("shopee", [first, second], terms=("ssd",)).offers,
+        content_campaign_id="real-two-items",
+    )
+    assert len(pipe.curate_and_queue(ids, "real-two-items")) == 2
+    assert pipe.process_one()["status"] == "PUBLISHED"
+    assert pipe.process_one() is None
+    assert len(sent) == 1
+    assert db.queue_depths(dry_run=False)["publish_queue_depth"] == 1
+
+
+def test_telegram_only_worker_skips_legacy_artificial_media(tmp_path):
+    from app.worker import Worker
+    from app.scheduler import run_database_tick
+    settings = _settings(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    batch = prepare_assisted_offers("shopee", [_item()], terms=("ssd",))
+    pipe = Pipeline(db, settings, source_adapter="assisted")
+    pipe.ingest_offers(batch.offers, content_campaign_id="no-media")
+    class ForbiddenMedia:
+        def generate_offer(self, offer_id, campaign):
+            raise AssertionError("legacy video rendering must not run")
+    worker = Worker(
+        db, settings, pipe, ForbiddenMedia(), None, idle_seconds=1,
+        error_backoff_seconds=1, tick=run_database_tick,
+    )
+    worker._process_content_jobs({"status": "idle"})
+    assert db.queue_depths(dry_run=True)["publish_queue_depth"] == 1
+    assert db.rows("SELECT COUNT(*) AS n FROM social_queue")[0]["n"] == 0
