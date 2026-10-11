@@ -236,6 +236,8 @@ def runtime_status(
         },
         "ffmpeg_available": bool(ffmpeg_probe(settings)),
         "dry_run": settings.dry_run,
+        "telegram_only_mode": settings.telegram_only_mode,
+        "telegram_real_enabled": settings.telegram_real_enabled,
     }
 
 
