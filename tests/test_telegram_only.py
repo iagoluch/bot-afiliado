@@ -195,6 +195,7 @@ def test_real_rate_cap_defer_second_offer_without_claiming_queue(tmp_path):
     first = _item()
     second = _item()
     second["title"] = "Mouse Gamer Sem Fio"
+    second["category"] = "perifericos"
     second["external_product_id"] = "tech-456"
     second["source_url"] = "https://shopee.com.br/product/1/tech-456"
     second["affiliate_url"] = "https://s.shopee.com.br/tech-456"
