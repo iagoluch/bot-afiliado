@@ -40,6 +40,11 @@ def _item():
         "affiliate_url": "https://s.shopee.com.br/tech-123?sub_id=camp1",
         "collected_at": utc_now(),
         "stock_status": "IN_STOCK",
+        "rating": "4.9",
+        "sales_count": "5000",
+        "commission_rate": "20",
+        "coupon": "TECH10",
+        "shipping": "frete gratis",
         "image_urls": ["https://down-br.img.susercontent.com/abc123.jpg"],
     }
 
