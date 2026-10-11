@@ -13,7 +13,7 @@ from app.config import Settings, validate_public_base_url
 from app.db import Database
 from app.models import Offer, utc_now
 from app.services.compliance import ComplianceError, merchant_key, validate_content, validate_distribution, validate_offer
-from app.services.content import telegram_creative_id, telegram_message, telegram_tracking_url
+from app.services.content import telegram_creative_id, telegram_message, telegram_tracking_url, telegram_direct_message, telegram_product_photo
 from app.services.curation import score_offer, verified_offer_data
 from app.services.dedup import is_in_cooldown
 from app.services.telegram import MAX_MESSAGE_CHARS, TelegramClient, TelegramDeliveryUncertain, TelegramRateLimit
@@ -28,7 +28,7 @@ class Pipeline:
         *,
         source_adapter: str = "shopee",
     ):
-        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
+        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run or settings.telegram_only_mode)
         self.db = db
         self.settings = settings
         self.source_adapter = source_adapter
@@ -124,8 +124,11 @@ class Pipeline:
             mode = "dry" if self.settings.dry_run else "real"
             raw_key = f"telegram:{offer_id}:{offer['current_price_cents']}:{campaign_id}:{mode}"
             key = hashlib.sha256(raw_key.encode()).hexdigest()
-            tracking_url = telegram_tracking_url(self.settings.public_base_url, offer_id, campaign_id, key)
-            body = telegram_message(offer, tracking_url)
+            if self.settings.telegram_only_mode:
+                body = telegram_direct_message(offer)
+            else:
+                tracking_url = telegram_tracking_url(self.settings.public_base_url, offer_id, campaign_id, key)
+                body = telegram_message(offer, tracking_url)
             try:
                 validate_content(
                     body,
@@ -159,13 +162,16 @@ class Pipeline:
         try:
             validate_offer(offer)
             validate_distribution(offer, queue["channel"], self.settings)
-            keyed_url = telegram_tracking_url(
-                self.settings.public_base_url, queue["offer_id"], queue["campaign_id"], queue["idempotency_key"],
-            )
-            tracking_url = keyed_url if keyed_url in queue["body"] else telegram_tracking_url(
-                self.settings.public_base_url, queue["offer_id"], queue["campaign_id"],
-            )
-            current_body = telegram_message(offer, tracking_url)
+            if self.settings.telegram_only_mode:
+                current_body = telegram_direct_message(offer)
+            else:
+                keyed_url = telegram_tracking_url(
+                    self.settings.public_base_url, queue["offer_id"], queue["campaign_id"], queue["idempotency_key"],
+                )
+                tracking_url = keyed_url if keyed_url in queue["body"] else telegram_tracking_url(
+                    self.settings.public_base_url, queue["offer_id"], queue["campaign_id"],
+                )
+                current_body = telegram_message(offer, tracking_url)
             validate_content(
                 current_body,
                 allow_http=self.settings.dry_run,
@@ -187,7 +193,11 @@ class Pipeline:
             self.db.fail_publication(queue["id"], reason, state["open_until"])
             return {"queue_id": queue["id"], "status": "RATE_LIMITED" if rate_limited else "CIRCUIT_OPEN"}
         try:
-            result = self.telegram.send_message(queue["body"])
+            photo_url = telegram_product_photo(offer) if self.settings.telegram_only_mode else None
+            if photo_url and hasattr(self.telegram, "send_photo"):
+                result = self.telegram.send_photo(queue["body"], photo_url)
+            else:
+                result = self.telegram.send_message(queue["body"])
             if result.dry_run != self.settings.dry_run:
                 raise TelegramDeliveryUncertain("publisher retornou modo diferente da fila")
         except TelegramRateLimit as exc:
