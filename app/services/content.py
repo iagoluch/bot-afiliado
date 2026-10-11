@@ -71,3 +71,30 @@ def telegram_tracking_url(
         parameters["publication_key"] = publication_key
     query = urlencode(parameters)
     return f"{public_base_url.rstrip('/')}/go/{offer_id}?{query}"
+
+
+def telegram_direct_message(offer: Mapping[str, Any]) -> str:
+    """Copy direta para Telegram; utiliza exclusivamente fatos comprovados."""
+    discount = verified_discount(offer)
+    title = str(offer["title"]).strip()[:180]
+    merchant = str(offer["merchant"]).strip()
+    url = str(offer["affiliate_url"]).strip()
+    if not url.startswith("https://"):
+        raise ValueError("link afiliado HTTPS obrigatorio")
+    lines = [
+        "#publi", "",
+        "🔥 PREÇO CAIU!" if discount else "🔥 ACHADO TECH!",
+        title, "",
+    ]
+    if discount:
+        lines.append(f"🏷 De {brl(discount[0])}")
+    lines.append(f"💰 {brl(int(offer['current_price_cents']))}")
+    if discount:
+        lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
+    lines.append(f"🏬 {merchant}")
+    if offer.get("shipping"):
+        lines.append(f"📦 {str(offer['shipping']).strip()[:120]}")
+    if offer.get("coupon"):
+        lines.append(f"🎟 Cupom: {str(offer['coupon']).strip()[:80]}")
+    lines.extend(["", "👇 Confira pelo link oficial:", url])
+    return "\n".join(lines)
