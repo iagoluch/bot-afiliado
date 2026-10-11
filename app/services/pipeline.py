@@ -150,6 +150,14 @@ class Pipeline:
         return queue_ids
 
     def process_one(self) -> dict | None:
+        if self.settings.telegram_only_mode and not self.settings.dry_run:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
+            count = self.db.rows(
+                "SELECT COUNT(*) AS n FROM publications WHERE channel=? AND dry_run=0 AND published_at>=?",
+                ("telegram", cutoff),
+            )[0]["n"]
+            if int(count) >= self.settings.telegram_max_posts_per_hour:
+                return None
         queue = self.db.claim_due(dry_run=self.settings.dry_run)
         if queue is None:
             return None
