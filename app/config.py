@@ -166,6 +166,8 @@ class Settings:
     shopee_app_id: str | None = None
     shopee_secret: str | None = None
     technology_offer_terms: tuple[str, ...] = DEFAULT_TECH_OFFER_TERMS
+    telegram_only_mode: bool = False
+    telegram_real_enabled: bool = False
 
     @classmethod
     def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
@@ -235,6 +237,8 @@ class Settings:
             ai_local_timeout_seconds=_int_env("AI_LOCAL_TIMEOUT_SECONDS", 20),
             ai_circuit_failures=_int_env("AI_CIRCUIT_FAILURES", 2),
             ai_circuit_cooldown_seconds=_int_env("AI_CIRCUIT_COOLDOWN_SECONDS", 300),
+            telegram_only_mode=_bool_env("TELEGRAM_ONLY_MODE", False),
+            telegram_real_enabled=_bool_env("TELEGRAM_REAL_ENABLED", False),
             shopee_app_id=os.getenv("SHOPEE_APP_ID", "").strip() or None,
             shopee_secret=(
                 os.getenv("SHOPEE_SECRET") or os.getenv("SHOPEE_APP_SECRET") or ""
@@ -247,7 +251,17 @@ class Settings:
                 if term.strip()
             ),
         )
-        validate_public_base_url(settings.public_base_url, dry_run=settings.dry_run)
+        validate_public_base_url(
+            settings.public_base_url,
+            dry_run=settings.dry_run or settings.telegram_only_mode,
+        )
+        if settings.telegram_only_mode and not settings.dry_run:
+            if not settings.telegram_real_enabled:
+                raise ValueError("TELEGRAM_REAL_ENABLED=true exige confirmacao explicita para envio real")
+            if not settings.telegram_bot_token or not settings.telegram_chat_id:
+                raise ValueError("Telegram real exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID")
+            if (settings.channel_visibility or {}).get("telegram") != "public":
+                raise ValueError("Telegram real exige canal publico autorizado")
         if settings.ai_remote_provider not in {"cloudflare", "none"}:
             raise ValueError("AI_REMOTE_PROVIDER deve ser cloudflare ou none")
         if settings.cloudflare_account_id and not re.fullmatch(
