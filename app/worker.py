@@ -490,7 +490,7 @@ def _source_from_env(settings: Settings) -> Path | None:
         if not settings.dry_run and not (
             settings.telegram_only_mode and settings.telegram_real_enabled
         ):
-            raise ValueError("WORKER_SOURCE_MODE=database em modo real exige TELEGRAM_ONLY_MODE e TELEGRAM_REAL_ENABLED")
+            raise ValueError("WORKER_SOURCE_MODE=database bloqueado fora de DRY_RUN sem TELEGRAM_ONLY_MODE=true e TELEGRAM_REAL_ENABLED=true")
         return None
     configured = os.getenv("WORKER_SOURCE_PATH", "").strip()
     if configured:
