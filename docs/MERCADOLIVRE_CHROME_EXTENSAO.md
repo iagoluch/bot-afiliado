@@ -99,6 +99,31 @@ que a página não apresentou os elementos esperados, que o botão de compra nã
 foi confirmado ou que o Gerador não apresentou link novo.
 O código não inventará links nem preços.
 
+## Diagnóstico de busca com zero produtos
+
+Se o popup mostrar `BUSCA_SEM_LINKS_DE_PRODUTO` com `anchors` maior que
+zero e `productLinks=0`, ainda não sabemos se a busca foi redirecionada,
+se o Chrome exibiu uma página de acesso ou se os links estão em outro layout.
+Não há benefício em ampliar seletores sem inspecionar a página real.
+
+1. Desative a busca a cada 6 horas no popup.
+2. Atualize `main` com `git pull --ff-only origin main`.
+3. Em `chrome://extensions`, clique **Recarregar** em IAgo Tech.
+4. Abra o popup e clique **Diagnosticar página de busca (sem publicar)**.
+5. Será aberta uma **guia visível** de resultados de notebook, que permanecerá
+   aberta para inspeção. Abra novamente o popup para ver o relatório persistido.
+
+O relatório inclui endereço final **sem querystring**, título, cabeçalho,
+contagem de links, amostras de hosts/caminhos de links e indicação de aviso
+de acesso. **Não extrai cookies, tokens ou dados de sessão**, não chama o
+Gerador de Links, não envia nada à fila e não publica no Telegram.
+
+Se a guia exibida pedir login ou apresentar uma restrição, não use novas
+identidades, redes ou técnicas para contornar o acesso. Esse diagnóstico
+serve para distinguir uma mudança de layout de um bloqueio/redirect normal.
+A correção de seletores deve ser feita apenas depois de verificar o layout
+que efetivamente apareceu no navegador autenticado.
+
 ## 5. Autonomia de seis em seis horas
 
 Somente **depois** do teste real e de conferir seu grupo, ative a chave
