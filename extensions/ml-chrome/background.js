@@ -103,20 +103,82 @@ function searchCards(){
     }
   };
 }
+function extractVisibleProductPrice(){
+  // Only product buy-box price, never "original" (crossed out) or installment.
+  // Uses explicit payment conditions; uncertain price layouts are rejected.
+  const selector = [
+    ".ui-pdp-price__main-container .andes-money-amount",
+    ".ui-pdp-price__second-line .andes-money-amount",
+    "[data-testid='price-part'] .andes-money-amount"
+  ].join(", ");
+  let nodes=[...document.querySelectorAll(selector)];
+  if(nodes.length===0){
+    nodes=[...document.querySelectorAll(".ui-pdp-price .andes-money-amount")];
+  }
+  const prices=[], seen=new Set();
+  for(const node of nodes){
+    if(seen.has(node))continue;
+    seen.add(node);
+    if(node.getClientRects?.().length===0)continue;
+    const old=node.closest?.(
+      "s, del, .andes-money-amount--previous, .ui-pdp-price__original-value, [class*='original-price'], [class*='price-original']"
+    );
+    if(old||node.classList?.contains("andes-money-amount--previous"))continue;
+    // Catch text-decoration strike-through even when CSS class changes.
+    try{
+      const style=getComputedStyle(node);
+      if(style.textDecorationLine?.includes("line-through"))continue;
+    }catch(_e){}
+    const whole=(node.querySelector(".andes-money-amount__fraction")?.textContent||"").replace(/[.\s]/g,"");
+    const cents=(node.querySelector(".andes-money-amount__cents")?.textContent||"00").trim();
+    if(!/^\d{1,8}$/.test(whole)||!/^\d{1,2}$/.test(cents))continue;
+    const value=Number(whole)*100+Number(cents.padEnd(2,"0"));
+    if(!Number.isSafeInteger(value)||value<100||value>50000000)continue;
+    prices.push(value);
+  }
+  if(!prices.length)return {status:"NO_CURRENT_PRICE"};
+  const values=[...new Set(prices)].sort((a,b)=>a-b);
+  const section=document.querySelector(
+    ".ui-pdp-price__main-container, .ui-pdp-price, [data-testid='price-part']"
+  );
+  const context=String(section?.innerText||section?.textContent||"").slice(0,1800);
+  const pixMention=/\bpix\b/i.test(context);
+  const otherMention=/outros meios|outras formas|outros pagamentos/i.test(context);
+  if(values.length>2)return {status:"AMBIGUOUS_MULTIPLE_PRICES"};
+  if(values.length===2 && !pixMention)return {status:"AMBIGUOUS_PAYMENT_PRICES"};
+  // If the visible buy-box text shows a lower amount that the recognized
+  // money elements missed (common with special payment displays), fail closed.
+  // Never announce R$900 while another visible price reads R$759.
+  const textAmounts=[...context.matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
+    .map(m=>{
+      const [whole,cents]=m[1].replace(/\./g,"").split(",");
+      return Number(whole)*100+Number(cents);
+    }).filter(Number.isSafeInteger);
+  if(textAmounts.some(amount=>amount>=100 && amount<values[0])){
+    return {status:"UNPARSED_LOWER_VISIBLE_PRICE"};
+  }
+  const cents=values[0];
+  const payment_method=pixMention?"PIX":"STANDARD";
+  const other_price_cents=values.length===2&&otherMention?values[1]:null;
+  return {
+    status:"VERIFIED",
+    price_cents:cents,
+    price_payment_method:payment_method,
+    other_price_cents,
+    price_evidence:"VISIBLE_DOM_PRICE_V2"
+  };
+}
+
 function productDetails(){
   const title=(document.querySelector("h1.ui-pdp-title, h1.poly-component__title")?.textContent||"").trim();
-  const amount=document.querySelector(".ui-pdp-price__main-container .andes-money-amount, [data-testid='price-part'] .andes-money-amount, .ui-pdp-price__second-line .andes-money-amount");
-  if(!amount)return null;
-  const whole=(amount.querySelector(".andes-money-amount__fraction")?.textContent||"").replace(/[.\s]/g,"");
-  const cents=(amount.querySelector(".andes-money-amount__cents")?.textContent||"00").trim();
-  if(!/^\d{1,8}$/.test(whole)||!/^\d{1,2}$/.test(cents))return null;
-  const price=Number(whole)*100+Number(cents.padEnd(2,"0"));
   const buy=[...document.querySelectorAll("button,a")].some(el=>
     /^Comprar agora$/i.test((el.textContent||"").trim().replace(/\s+/g," "))&&
     el.getClientRects().length>0&&!el.disabled&&el.getAttribute("aria-disabled")!=="true");
-  if(!buy||price<100||price>50000000||title.length<6)return null;
+  if(!buy||title.length<6)return null;
+  const selected=extractVisibleProductPrice();
+  if(selected.status!=="VERIFIED")return null;
   return {title:title.slice(0,250),source_url:location.origin+location.pathname.replace(/\/$/,""),
-    price_cents:price,buy_now_enabled:true};
+    ...selected,buy_now_enabled:true};
 }
 function isGenerator(){
   return !!document.querySelector("textarea") &&

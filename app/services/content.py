@@ -88,7 +88,20 @@ def telegram_direct_message(offer: Mapping[str, Any]) -> str:
     ]
     if discount:
         lines.append(f"🏷 De {brl(discount[0])}")
-    lines.append(f"💰 {brl(int(offer['current_price_cents']))}")
+    metadata = offer.get("tracking_metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    is_browser_pix = (
+        offer.get("source_type") == "ML_BROWSER_VERIFIED"
+        and metadata.get("price_evidence") == "VISIBLE_DOM_PRICE_V2"
+        and metadata.get("price_payment_method") == "PIX"
+    )
+    current = brl(int(offer["current_price_cents"]))
+    lines.append(f"💰 {current} no Pix" if is_browser_pix else f"💰 {current}")
+    if is_browser_pix:
+        alternate = metadata.get("other_payment_price_cents")
+        if type(alternate) is int and alternate > int(offer["current_price_cents"]):
+            lines.append(f"💳 {brl(alternate)} em outros meios de pagamento")
     if discount:
         lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
     lines.append(f"🏬 {merchant}")

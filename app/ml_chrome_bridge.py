@@ -52,6 +52,19 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         raise MLError("PRODUTO_FORA_DO_NICHO")
     if type(price) is not int or not 100 <= price <= 50_000_000:
         raise MLError("PRECO_INVALIDO")
+    # The previous extension read the first DOM price: it could be a crossed-out
+    # or non-discounted amount. Reject legacy/no-evidence price payloads.
+    if product.get("price_evidence") != "VISIBLE_DOM_PRICE_V2":
+        raise MLError("PRECO_SEM_VALIDACAO_DE_DESCONTO")
+    method = product.get("price_payment_method")
+    if method not in ("PIX", "STANDARD"):
+        raise MLError("CONDICAO_DE_PAGAMENTO_INVALIDA")
+    alternate = product.get("other_price_cents")
+    if alternate is not None and (
+        method != "PIX" or type(alternate) is not int
+        or not price < alternate <= 50_000_000
+    ):
+        raise MLError("PRECO_ALTERNATIVO_INVALIDO")
     if product.get("buy_now_enabled") is not True:
         raise MLError("COMPRA_NAO_CONFIRMADA")
     if affiliate_from_text(affiliate) != affiliate:
@@ -88,6 +101,9 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         "source_url": source,
         "title": title,
         "price_cents": price,
+        "price_evidence": "VISIBLE_DOM_PRICE_V2",
+        "price_payment_method": method,
+        "other_price_cents": alternate,
         "stock_status": "IN_STOCK",
         "confirmed_at": now.isoformat(timespec="seconds"),
     }

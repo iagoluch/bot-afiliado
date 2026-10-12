@@ -279,6 +279,19 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
         raise MLError("PUBLICACAO_OU_LINK_NAO_AUTORIZADO")
     if not is_technology_offer({"title": details["title"], "category": "", "brand": ""}, terms=settings.technology_offer_terms):
         raise MLError("PRODUTO_FORA_DO_NICHO")
+    # No browser-sourced offer may publish with legacy first-price extraction.
+    if details.get("price_evidence") != "VISIBLE_DOM_PRICE_V2" or details.get(
+        "price_payment_method"
+    ) not in {"PIX", "STANDARD"}:
+        raise MLError("VALIDACAO_DO_PRECO_INCOMPLETA")
+    alternate = details.get("other_price_cents")
+    if alternate is not None and (
+        details["price_payment_method"] != "PIX"
+        or type(alternate) is not int
+        or alternate <= details["price_cents"]
+        or alternate > 50_000_000
+    ):
+        raise MLError("PRECO_ALTERNATIVO_INVALIDO")
     timestamp = datetime.fromisoformat(details["confirmed_at"].replace("Z", "+00:00"))
     if (datetime.now(timezone.utc) - timestamp).total_seconds() > 300:
         raise MLError("VALIDACAO_DE_PRECO_EXPIRADA")
@@ -297,7 +310,13 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
         expires_at=(timestamp + timedelta(minutes=15)).isoformat(timespec="seconds"),
         stock_status="IN_STOCK",
         source_type="ML_BROWSER_VERIFIED",
-        tracking_metadata={"browser_verified": True, "affiliate_ui_generated": True},
+        tracking_metadata={
+            "browser_verified": True,
+            "affiliate_ui_generated": True,
+            "price_evidence": "VISIBLE_DOM_PRICE_V2",
+            "price_payment_method": details["price_payment_method"],
+            "other_payment_price_cents": alternate,
+        },
     )
     pipeline = Pipeline(db, settings)
     ids = pipeline.ingest_offers([offer], content_campaign_id="ml-browser-official")

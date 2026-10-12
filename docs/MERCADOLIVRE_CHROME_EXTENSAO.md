@@ -150,6 +150,41 @@ Se resultar em `SEM_OFERTA_APROVADA`, observe as contagens separadas:
 Não repita execuções sem inspecionar o estágio que falhou. Se ocorrer
 `FILA_CRIADA`, o worker pode publicar uma oferta real.
 
+
+## Preço anunciado: promoções, valor riscado e Pix
+
+O piloto comprovou a segunda publicação real do Telegram, porém o preço de
+um mouse apareceu por aproximadamente R$ 900, enquanto a oferta consultada
+indicava aproximadamente R$ 759. A implementação anterior pegava o
+**primeiro elemento de preço encontrado no DOM**, sem distinguir os valores.
+
+O extrator atualizado:
+
+- Lê os preços ativos do bloco de compra, **ignorando preços anteriores
+  riscados** e valores ocultos.
+- Com preço Pix explicitamente identificado, usa o valor correspondente e
+  acrescenta **"no Pix"** no texto; se aparecer também o preço de outros
+  meios de pagamento, inclui ambos, sem confundir as condições.
+- Se o HTML mostrar vários preços sem condições reconhecíveis, **não
+  enfileira** a oferta. Rejeitar uma oferta ambígua é melhor do que anunciar
+  um valor incorreto.
+- A ponte Python agora exige a marca `VISIBLE_DOM_PRICE_V2`, o tipo de
+  pagamento e valida valores alternativos; scripts antigos são bloqueados
+  antes da fila. A pipeline revalida essa evidência antes da publicação.
+
+**Não é necessário apagar o banco nem gerar outro link manualmente.**
+
+Para aplicar, rode `git pull --ff-only origin main` e depois clique
+**Recarregar** em `chrome://extensions`. A rotina recorrente deve permanecer
+**desativada** até conferir uma nova oferta. Se o post antigo ainda exibe preço
+inadequado, edite ou apague a mensagem no Telegram — a atualização do código
+não altera publicações passadas.
+
+O Mercado Livre pode oferecer preços específicos por meios de pagamento,
+cupons ou perfis. Um anúncio encontrado automaticamente só pode divulgar
+um valor cuja condição esteja claramente identificada na página; preço de
+benefício restrito ou cupom não verificado deve ser rejeitado.
+
 ## 5. Autonomia de seis em seis horas
 
 Somente **depois** do teste real e de conferir seu grupo, ative a chave
