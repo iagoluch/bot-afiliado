@@ -149,9 +149,9 @@ function extractVisibleProductPrice(){
   // If the visible buy-box text shows a lower amount that the recognized
   // money elements missed (common with special payment displays), fail closed.
   // Never announce R$900 while another visible price reads R$759.
-  const textAmounts=[...context.matchAll(/(?:R\\$\\s*)?([0-9]{1,8}(?:\\.[0-9]{3})*,[0-9]{2})(?!\\d)/g)]
+  const textAmounts=[...context.matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
     .map(m=>{
-      const [whole,cents]=m[1].replace(/\\./g,"").split(",");
+      const [whole,cents]=m[1].replace(/\./g,"").split(",");
       return Number(whole)*100+Number(cents);
     }).filter(Number.isSafeInteger);
   if(textAmounts.some(amount=>amount>=100 && amount<values[0])){
