@@ -34,6 +34,33 @@ A URL do gerador fica registrada em `data/ml_autopilot_config.json`
 (apenas URL oficial). Não precisa colar cookie, código de sessão ou segredo
 do navegador em outro lugar.
 
+### Acer com Lubuntu/Ubuntu 26.04
+
+**Necessário Playwright 1.61 ou superior.** O pin antigo `1.55.0` gera
+`ERROR: Playwright does not support chromium on ubuntu26.04-x64` e,
+consequentemente, `Executable doesn't exist at ~/.cache/ms-playwright/...`.
+A versão fixada no projeto agora é `1.63.0`.
+
+Se o erro ocorrer em uma instalação antiga, **não repita somente o comando
+`playwright install`**: primeiro atualize o pacote no mesmo `.venv`:
+
+```bash
+cd ~/bot-afiliado
+git pull --ff-only origin main
+.venv/bin/python -m pip install --upgrade -r requirements-browser.txt
+.venv/bin/python -m playwright install chromium
+.venv/bin/python -m app.mercadolivre_autopilot setup
+```
+
+O Playwright precisa da compilação de navegador compatível com sua versão.
+Se a instalação ainda falhar, envie a saída de
+`.venv/bin/python -m pip show playwright` e do comando de instalação —
+não execute scripts externos para corrigir o cache e não use `--no-sandbox`.
+
+Referências: https://playwright.dev/python/docs/intro e
+https://github.com/microsoft/playwright/issues/40117.
+
+
 ## Teste da automação de uma oferta
 
 Com o worker do Telegram ativo, execute **uma única vez**:
