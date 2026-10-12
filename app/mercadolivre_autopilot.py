@@ -31,7 +31,7 @@ KEYWORDS = (
 ML_HOSTS = {"mercadolivre.com.br", "www.mercadolivre.com.br", "produto.mercadolivre.com.br"}
 CATALOG_PATH = re.compile(r"(?:^|/)p/MLB[0-9]{5,16}(?:/|$)", re.I)
 ITEM_PATH = re.compile(r"MLB-[0-9]{5,16}", re.I)
-AFFILIATE_CODE = re.compile(r"https://meli\.la/[A-Za-z0-9]{3,80}(?![A-Za-z0-9])|https://(?:www\.)?mercadolivre\.com/sec/[A-Za-z0-9_-]{3,100}", re.I)
+AFFILIATE_CODE = re.compile(r"(?<![A-Za-z0-9_/?&=])(?:https://meli\.la/[A-Za-z0-9]{3,80}|https://(?:www\.)?mercadolivre\.com/sec/[A-Za-z0-9_-]{3,100})(?![A-Za-z0-9_./?%#&=-])", re.I)
 
 
 class MLError(ValueError):
