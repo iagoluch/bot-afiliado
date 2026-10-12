@@ -21,7 +21,7 @@ a{color:#93c5fd}
 <button id="once">Executar 1 busca e gerar link</button>
 <button id="diagnose" class="secondary">Diagnosticar página de busca (sem publicar)</button>
 <label><input type="checkbox" id="enabled"> Buscar até 1 oferta a cada 5 minutos (Chrome aberto)</label>
-<div class="muted">Uma categoria diferente por tentativa; limite 12/h requer TELEGRAM_MAX_POSTS_PER_HOUR=12 no .env. Ative só após validar os preços. O botão de teste pode gerar uma publicação real se o worker estiver em modo real.</div>
+<div class="muted">Uma categoria diferente por tentativa. O worker publica ofertas validadas assim que elas entram na fila, sem teto artificial por hora. O Telegram pode aplicar limites próprios. Ative só após validar os preços; o teste pode publicar de verdade.</div>
 <script src="popup.js"></script>
 </body>
 </html>

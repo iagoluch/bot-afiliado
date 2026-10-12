@@ -331,7 +331,7 @@ class Worker:
             else:
                 self._clear_warning("heartbeat")
 
-    def _process_content_jobs(self, tick_result: dict[str, Any]) -> None:
+    def _process_content_jobs(self, tick_result: dict[str, Any]) -> int:
         generated: list[dict[str, Any]] = []
         while not self.stop_event.is_set():
             job = retry_sqlite(
@@ -389,6 +389,7 @@ class Worker:
                 generated.append(result)
         if tick_result.get("status") == "cycle" and isinstance(tick_result.get("result"), dict):
             tick_result["result"]["content"] = generated
+        return len(generated)
 
     def _record_result(self, result: dict[str, Any]) -> None:
         try:
@@ -418,6 +419,7 @@ class Worker:
     def run_forever(self) -> None:
         started_at = utc_now()
         consecutive_errors = 0
+        previous_result: str | None = None
         retry_sqlite(lambda: self.db.recover_content_jobs(dry_run=self.settings.dry_run), wait=self._wait)
         self._heartbeat("STARTING", started_at=started_at)
         heartbeat_thread = threading.Thread(
@@ -433,16 +435,27 @@ class Worker:
                         lambda: self.tick(self.db, self.pipeline, self.source, scheduler_now()),
                         wait=self._wait,
                     )
-                    self._process_content_jobs(result)
+                    generated = self._process_content_jobs(result)
+                    # The native Chrome bridge queues a content_job in SQLite.
+                    # Publish it in this very iteration, instead of sleeping
+                    # until the next poll after generating the Telegram body.
+                    if self.source is None and generated and result.get("status") == "idle":
+                        published = retry_sqlite(lambda: self.pipeline.process_one(), wait=self._wait)
+                        if published is not None:
+                            result = {"status": "queue", "result": published}
                     self._record_result(result)
                     now = utc_now()
                     result_status = str(result.get("status", "idle"))
-                    self._heartbeat(
-                        "RUNNING",
-                        last_tick_at=now,
-                        last_cycle_at=now if result_status == "cycle" else None,
-                        last_result=result_status if result_status in {"cycle", "queue", "idle"} else "error",
-                    )
+                    # The heartbeat thread handles idle liveness every 15 s;
+                    # avoid hammering an old HDD with writes every 2 seconds.
+                    if result_status != "idle" or previous_result != "idle":
+                        self._heartbeat(
+                            "RUNNING",
+                            last_tick_at=now,
+                            last_cycle_at=now if result_status == "cycle" else None,
+                            last_result=result_status if result_status in {"cycle", "queue", "idle"} else "error",
+                        )
+                    previous_result = result_status
                     consecutive_errors = 0
                     if result_status == "idle" and self._wait(self.idle_seconds):
                         break
@@ -537,7 +550,10 @@ def main() -> None:
                 Pipeline(db, settings, source_adapter=adapter),
                 _content_pipeline_for_worker(db, settings),
                 source,
-                idle_seconds=_positive_float_env("WORKER_IDLE_SECONDS", 30.0),
+                # Database/native-bridge mode checks fresh offers at most 2 s
+                # apart, even if an old .env still requests 30 s idle waits.
+                idle_seconds=min(_positive_float_env("WORKER_IDLE_SECONDS", 30.0), 2.0)
+                if source_mode == "database" else _positive_float_env("WORKER_IDLE_SECONDS", 30.0),
                 error_backoff_seconds=_positive_float_env("WORKER_ERROR_BACKOFF_SECONDS", 60.0),
                 tick=run_database_tick if source_mode == "database" else run_tick,
             )

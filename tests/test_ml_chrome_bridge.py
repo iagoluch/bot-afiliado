@@ -277,3 +277,59 @@ def test_invalid_installment_payload_never_enters_queue(tmp_path, term_changes):
     payload = record(price_cents=302500, **term_changes)
     assert process(payload, settings=conf, db=db)["status"] == "BLOCKED"
     assert not db.rows("SELECT id FROM offers")
+
+
+def test_distinct_ml_topics_publish_immediately_without_hourly_or_generic_category_pause(tmp_path):
+    from dataclasses import replace
+    from threading import Event
+
+    from app.scheduler import run_database_tick
+    from app.services.pipeline import Pipeline
+    from app.worker import Worker
+
+    conf = replace(settings(tmp_path, real=True), telegram_max_posts_per_hour=1)
+    db = Database(conf.database_path)
+    first = record()
+    second = record(
+        source_url="https://www.mercadolivre.com.br/p/MLB25117280",
+        title="SSD NVMe 1TB para computador",
+    )
+    second["topic"] = "ssd"
+    assert process(first, settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    assert process(second, settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    assert db.rows("SELECT COUNT(*) n FROM content_jobs")[0]["n"] == 2
+
+    sent = []
+    stop = Event()
+
+    class LocalTelegram:
+        def send_message(self, body):
+            sent.append(body)
+            if len(sent) == 2:
+                stop.set()
+            return type("Sent", (), {"dry_run": False, "message_id": str(len(sent))})()
+
+    pipeline = Pipeline(db, conf, telegram=LocalTelegram(), source_adapter="assisted")
+    worker = Worker(
+        db, conf, pipeline, None, None, idle_seconds=2,
+        error_backoff_seconds=1, tick=run_database_tick, stop_event=stop,
+    )
+    sleeps = []
+    worker._wait = lambda seconds: sleeps.append(seconds) or False
+    worker.run_forever()
+
+    assert len(sent) == 2
+    assert all("#publi" in message for message in sent)
+    assert [row["status"] for row in db.rows("SELECT status FROM publish_queue ORDER BY id")] == [
+        "PUBLISHED", "PUBLISHED",
+    ]
+    # The first queued job is published immediately in the same worker cycle.
+    assert sleeps == []
+
+
+def test_same_browser_offer_still_deduplicated_even_without_category_pause(tmp_path):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    assert process(record(), settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    assert process(record(), settings=conf, db=db)["status"] == "TOPIC_COOLDOWN"
+    assert db.rows("SELECT COUNT(*) n FROM content_jobs")[0]["n"] == 1

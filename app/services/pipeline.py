@@ -166,18 +166,27 @@ class Pipeline:
     def curate_and_queue(self, offer_ids: list[int], campaign_id: str = "organic") -> list[int]:
         queue_ids: list[int] = []
         for offer_id in offer_ids:
-            score, classification = score_offer(self.db, offer_id)
+            row = self.db.get_offer(offer_id)
+            if row is None:
+                continue
+            # All Chrome ML offers share the generic DB category "tecnologia".
+            # Its generic 30-minute category cooldown unintentionally blocked
+            # unrelated SSD/notebook/mouse offers. Keep the same-product 24h
+            # check; discovery handles topic diversity independently.
+            is_ml_browser = (
+                self.settings.telegram_only_mode
+                and row["source_type"] == "ML_BROWSER_VERIFIED"
+            )
             if is_in_cooldown(
                 self.db,
                 offer_id,
                 "telegram",
                 campaign_id,
                 dry_run=self.settings.dry_run,
+                check_category=not is_ml_browser,
             ):
                 continue
-            row = self.db.get_offer(offer_id)
-            if row is None:
-                continue
+            score, classification = score_offer(self.db, offer_id)
             offer = verified_offer_data(self.db, offer_id, row)
             # Shopee Affiliate API's productOfferV2 does not prove live stock.
             # Staged candidates must not enter a Telegram publish queue.
@@ -227,14 +236,9 @@ class Pipeline:
         return queue_ids
 
     def process_one(self) -> dict | None:
-        if self.settings.telegram_only_mode and not self.settings.dry_run:
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
-            count = self.db.rows(
-                "SELECT COUNT(*) AS n FROM publications WHERE channel=? AND dry_run=0 AND published_at>=?",
-                ("telegram", cutoff),
-            )[0]["n"]
-            if int(count) >= self.settings.telegram_max_posts_per_hour:
-                return None
+        # No artificial hourly publishing gate: valid queued offers may go
+        # out as soon as the worker is available. The Telegram API's 429
+        # retry_after, pacing, idempotency and channel circuit remain active.
         queue = self.db.claim_due(dry_run=self.settings.dry_run)
         if queue is None:
             return None

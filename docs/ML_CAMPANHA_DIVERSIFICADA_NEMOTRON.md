@@ -8,18 +8,21 @@ carregador, GPU, rede, webcam, placa-mãe, smartwatch, videogame,
 impressora, pendrive, gabinete, fonte, smart home, armazenamento, CPU e
 microfone.
 
-Isso permite até 4 ofertas a cada 20 minutos, ou 12 por hora, SE houver
-produtos tecnológicos com preço, disponibilidade e link comissionado válidos.
-Nenhuma meta justifica ofertas inventadas. A mesma categoria tem cooldown
-de uma hora no banco e o mesmo produto não é republicado dentro de 24h.
+A extensão tenta buscar até uma oferta a cada cinco minutos, desde que
+encontre produto tecnológico com preço, disponibilidade e link comissionado
+válidos. Nenhuma meta justifica ofertas inventadas. A mesma categoria de
+busca fica em espera por uma hora para diversificar o catálogo, e o mesmo
+produto não é republicado dentro de 24 horas.
 
-**O worker possui limite independente**: ajuste no arquivo .env do Acer:
-
-    TELEGRAM_MAX_POSTS_PER_HOUR=12
-
-Se o limite continuar em 4, o worker publicará no máximo quatro por hora,
-mesmo com a extensão tentando pesquisar a cada cinco minutos. A alteração
-não liga publicação real por conta própria e não garante quantidade mínima.
+**O worker não tem limite artificial de ofertas por hora:** cada oferta nova
+validada e enfileirada pode ser publicada assim que o worker a recebe. O
+modo SQLite verifica novidades pelo menos a cada dois segundos quando o
+processo está ativo; a preparação e o envio ocorrem no mesmo ciclo.
+TELEGRAM_MAX_POSTS_PER_HOUR em .env é uma opção legada ignorada no fluxo
+de publicação. Permanecem os controles necessários: autorização de envio,
+preços e links válidos, deduplicação, pacing de cerca de um segundo entre
+envios e retry_after oficial do Telegram quando houver HTTP 429.
+Não há promessa de publicação instantânea sob erro de rede ou rate-limit.
 
 ## Nemotron 3 Super da NVIDIA
 
