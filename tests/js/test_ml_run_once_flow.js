@@ -60,11 +60,11 @@ async function simulate({emptyInBackground=false,productAvailable=true,linkGener
       }
       if(func===functions.productDetails){
         state.productReads++;
-        return productAvailable?{title:"Fone Bluetooth Dapon H02D",
+        return productAvailable?{status:"VALIDATED",title:"Fone Bluetooth Dapon H02D",
           price_cents:7490,price_evidence:"VISIBLE_DOM_PRICE_V2",
           price_payment_method:"STANDARD",other_price_cents:null,
           buy_now_enabled:true,
-          source_url:"https://www.mercadolivre.com.br/p/MLB24117280"}:null;
+          source_url:"https://www.mercadolivre.com.br/p/MLB24117280"}:{status:"PURCHASE_CONTROL_MISSING"};
       }
       if(func===functions.isGenerator)return true;
       if(func===functions.generateLink){
@@ -97,6 +97,7 @@ async function simulate({emptyInBackground=false,productAvailable=true,linkGener
   const unavailable=await simulate({productAvailable:false});
   assert.equal(unavailable.result.status,"SEM_OFERTA_APROVADA");
   assert.equal(unavailable.result.reasons.product,1);
+  assert.equal(unavailable.result.productFailures.PURCHASE_CONTROL_MISSING,1);
   assert.equal(unavailable.state.queueCalls,0);
 
   const noAffiliate=await simulate({linkGenerated:false});
