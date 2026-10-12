@@ -5,6 +5,7 @@ import json
 import re
 import unicodedata
 from dataclasses import asdict, dataclass
+from collections.abc import Mapping
 from typing import Any, TextIO
 
 from app.adapters.mercadolivre_manual import MercadoLivreManualAdapter
@@ -52,26 +53,46 @@ def read_assisted_json(
     return [dict(record) for record in records]
 
 
-def _search_text(offer: Offer) -> str:
-    raw = " ".join((offer.title, offer.category, offer.brand)).lower()
-    return "".join(
-        character for character in unicodedata.normalize("NFKD", raw)
+def _normalize_technology_text(value: str) -> str:
+    """Normaliza acentos e separadores (USB-C, Wi-Fi, placa-mãe etc.)."""
+    ascii_text = "".join(
+        character for character in unicodedata.normalize("NFKD", value.lower())
         if not unicodedata.combining(character)
     )
+    return " ".join(re.findall(r"[a-z0-9]+", ascii_text))
+
+
+def _search_text(offer: Offer | Mapping[str, Any]) -> str:
+    if isinstance(offer, Mapping):
+        pieces = (str(offer.get(name) or "") for name in ("title", "category", "brand"))
+    else:
+        pieces = (offer.title, offer.category, offer.brand)
+    return _normalize_technology_text(" ".join(pieces))
 
 
 def _normalized_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
-    normalized: list[str] = []
-    for term in terms:
-        value = "".join(
-            character for character in unicodedata.normalize("NFKD", term.strip().lower())
-            if not unicodedata.combining(character)
-        )
-        if value:
-            normalized.append(value)
+    normalized = tuple(dict.fromkeys(
+        term for raw in terms if (term := _normalize_technology_text(raw))
+    ))
     if not normalized:
         raise ValueError("filtro de tecnologia precisa conter ao menos um termo")
-    return tuple(dict.fromkeys(normalized))
+    return normalized
+
+
+def is_technology_offer(
+    offer: Offer | Mapping[str, Any],
+    *,
+    terms: tuple[str, ...],
+    normalized_terms: tuple[str, ...] | None = None,
+) -> bool:
+    """Filtra titulo/categoria/marca sem falsos positivos por substring.
+
+    Nao aceita texto comercial generico, descricao ou URLs como prova do nicho.
+    O filtro e deterministico, local e nao faz chamadas de rede/IA.
+    """
+    text = f" {_search_text(offer)} "
+    enabled_terms = normalized_terms if normalized_terms is not None else _normalized_terms(terms)
+    return any(f" {term} " in text for term in enabled_terms)
 
 
 def prepare_assisted_offers(
@@ -94,8 +115,7 @@ def prepare_assisted_offers(
     accepted: list[Offer] = []
     normalized_terms = _normalized_terms(terms)
     for offer in offers:
-        text = _search_text(offer)
-        if any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text) for term in normalized_terms):
+        if is_technology_offer(offer, terms=terms, normalized_terms=normalized_terms):
             accepted.append(offer)
     return AssistedBatch(
         offers=accepted,
