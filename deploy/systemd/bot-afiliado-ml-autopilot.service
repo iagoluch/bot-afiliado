@@ -1,0 +1,12 @@
+[Unit]
+Description=Bot Afiliado - busca ML e gera link oficial pela interface
+Documentation=https://github.com/iagoluch/bot-afiliado/blob/main/docs/MERCADOLIVRE_AUTOPILOT.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/bot-afiliado
+ExecStart=%h/bot-afiliado/.venv/bin/python -m app.mercadolivre_autopilot once
+TimeoutStartSec=300
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
