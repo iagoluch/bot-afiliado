@@ -59,10 +59,7 @@ def test_fake_invented_claims_and_prices_are_rejected():
         "Maior durabilidade garantida",
         "#publi\nCompre aqui",
     ):
-        assert _sanitize_hook(text) is None or text in {
-            "Mouse compatível com qualquer computador",
-            "Maior durabilidade garantida",
-        }
+        assert _sanitize_hook(text) is None
 
 
 def test_invalid_json_response_falls_back():
