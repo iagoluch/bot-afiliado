@@ -1,0 +1,12 @@
+[Unit]
+Description=Bot Afiliado - busca de candidatos Shopee a cada seis horas
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:15:00
+Persistent=true
+RandomizedDelaySec=5m
+AccuracySec=1m
+Unit=bot-afiliado-shopee-discovery.service
+
+[Install]
+WantedBy=timers.target
