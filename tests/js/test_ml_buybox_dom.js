@@ -96,6 +96,60 @@ assert.equal(pricedWithInterest.installment_interest_free,false);
 assert.equal(pricedWithInterest.installment_with_interest,true);
 
 
+// Multiple payment options: choose lowest *interest-free* monthly amount,
+// even when an interest-bearing plan advertises more installments.
+const mixed=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n6x de R$ 200,00 sem juros\n12x de R$ 100,00 sem juros\n24x de R$ 74,90 com juros"
+}));
+assert.equal(mixed.status,"VALIDATED");
+assert.equal(mixed.installment_count,12);
+assert.equal(mixed.installment_cents,10000);
+assert.equal(mixed.installment_interest_free,true);
+assert.equal(mixed.installment_with_interest,false);
+
+// Do not assume the largest count wins when its monthly payment is higher.
+const lowestFreePayment=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n12x de R$ 120,00 sem juros\n10x de R$ 120,00 sem juros\n6x de R$ 200,00 sem juros"
+}));
+assert.equal(lowestFreePayment.installment_count,12);
+assert.equal(lowestFreePayment.installment_cents,12000);
+assert.equal(lowestFreePayment.installment_interest_free,true);
+
+const interestOnly=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n6x R$ 231,00 com juros\n12x de R$ 120,00 com juros"
+}));
+assert.equal(interestOnly.installment_count,12);
+assert.equal(interestOnly.installment_cents,12000);
+assert.equal(interestOnly.installment_interest_free,false);
+assert.equal(interestOnly.installment_with_interest,true);
+
+const unlabelled=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n12x de R$ 100,00"
+}));
+assert.equal(unlabelled.installment_count,null);
+assert.equal(unlabelled.installment_interest_free,null);
+
+// Distinct prices for the same 12x no-interest plan are ambiguous; choose
+// another unambiguous verified plan, never advertise the questionable 12x.
+const conflictingFree=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n12x de R$ 100,00 sem juros\n12x de R$ 115,00 sem juros\n6x de R$ 200,00 sem juros"
+}));
+assert.equal(conflictingFree.installment_count,6);
+assert.equal(conflictingFree.installment_cents,20000);
+assert.equal(conflictingFree.installment_interest_free,true);
+
+const misleading=check(fakePage({
+  values:[120000],
+  priceContext:"R$ 1.200,00\n24x de R$ 10,00 sem juros\n12x de R$ 120,00 com juros"
+}));
+assert.equal(misleading.installment_count,12);
+assert.equal(misleading.installment_with_interest,true);
+
 const noBuy=check(fakePage({button:"Comprar indisponível"}));
 assert.equal(noBuy.status,"PURCHASE_CONTROL_MISSING");
 const disabled=check(fakePage({disabled:true}));
