@@ -134,6 +134,19 @@ class Pipeline:
         metadata = offer.get("tracking_metadata")
         if not isinstance(metadata, dict) or metadata.get("browser_verified") is not True or metadata.get("affiliate_ui_generated") is not True:
             return False
+        if metadata.get("price_evidence") != "VISIBLE_DOM_PRICE_V2":
+            return False
+        method = metadata.get("price_payment_method")
+        if method not in {"PIX", "STANDARD"}:
+            return False
+        alternate = metadata.get("other_payment_price_cents")
+        current = offer.get("current_price_cents")
+        if type(current) is not int or current <= 0:
+            return False
+        if alternate is not None and (
+            method != "PIX" or type(alternate) is not int or alternate <= current
+        ):
+            return False
         if offer.get("stock_status") != "IN_STOCK":
             return False
         try:
