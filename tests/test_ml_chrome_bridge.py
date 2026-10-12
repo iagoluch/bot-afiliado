@@ -234,3 +234,46 @@ def test_category_cooldown_rejects_second_different_product(tmp_path):
     variant = record(source_url="https://www.mercadolivre.com.br/p/MLB25117280")
     assert process(variant, settings=conf, db=db)["status"] == "TOPIC_COOLDOWN"
     assert db.rows("SELECT COUNT(*) n FROM content_jobs")[0]["n"] == 1
+
+
+def test_verified_installments_and_product_blurb_reach_telegram(tmp_path):
+    from app.services.content import telegram_direct_message
+    from app.services.curation import verified_offer_data
+
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    payload = record(
+        title="Notebook gamer 15 polegadas",
+        price_cents=302500, price_payment_method="PIX",
+        other_price_cents=342300,
+        installment_count=10, installment_cents=34230,
+        installment_interest_free=True, installment_with_interest=False,
+    )
+    assert process(payload, settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    offer_id = db.rows("SELECT id FROM offers ORDER BY id DESC LIMIT 1")[0]["id"]
+    message = telegram_direct_message(verified_offer_data(db, offer_id))
+    assert "Pesquisando notebooks?" in message
+    assert "R$ 3.025,00 no Pix" in message
+    assert "R$ 3.423,00 em outros meios" in message
+    assert "Parcelamento: 10x de R$ 342,30 sem juros" in message
+    assert "https://meli.la/2MWiFPG" in message
+
+
+@pytest.mark.parametrize("term_changes", [
+    {"installment_count": 10, "installment_cents": None,
+     "installment_interest_free": True, "installment_with_interest": False},
+    {"installment_count": "10", "installment_cents": 34230,
+     "installment_interest_free": True, "installment_with_interest": False},
+    {"installment_count": 10, "installment_cents": 1230,
+     "installment_interest_free": True, "installment_with_interest": False},
+    {"installment_count": 10, "installment_cents": 34230,
+     "installment_interest_free": True, "installment_with_interest": True},
+    {"installment_count": 40, "installment_cents": 34230,
+     "installment_interest_free": True, "installment_with_interest": False},
+])
+def test_invalid_installment_payload_never_enters_queue(tmp_path, term_changes):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    payload = record(price_cents=302500, **term_changes)
+    assert process(payload, settings=conf, db=db)["status"] == "BLOCKED"
+    assert not db.rows("SELECT id FROM offers")
