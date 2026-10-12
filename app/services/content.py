@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
+from html import escape
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlencode, urlsplit
@@ -99,56 +99,91 @@ def _product_blurb(title: str) -> str:
             return message
     return "Mais uma opção de tecnologia para você conferir."
 
+def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
+    """Escaped Telegram HTML, based only on locally verified Chrome facts."""
+    from app.services.nvidia_copy import _sanitize_hook
+    from app.services.tech_drops import clean_title, creative_copy
+
+    metadata = offer.get("tracking_metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    raw_title = str(offer["title"]).strip()
+    merchant = str(offer["merchant"]).strip()
+    url = str(offer["affiliate_url"]).strip()
+    if not url.startswith("https://"):
+        raise ValueError("link afiliado HTTPS obrigatorio")
+
+    identity = str(offer.get("external_product_id") or offer.get("source_url") or raw_title)
+    heading, phrase = creative_copy(raw_title, identity, _sanitize_hook(metadata.get("copy_hook")))
+    discount = verified_discount(offer)
+    if discount:
+        heading = "📉 PREÇO CAIU!"  # Only when price history verified it.
+
+    # Telegram uses HTML parse_mode for this template. Escape all strings
+    # derived from the product page or seller; never trust seller markup.
+    lines = [
+        "#publi", "",
+        f"<b>{escape(heading)}</b>",
+        f"<b>{escape(clean_title(raw_title))}</b>",
+        "",
+        escape(phrase),
+        "",
+    ]
+    if discount:
+        lines.append(f"🏷 De {brl(discount[0])}")
+
+    price = int(offer["current_price_cents"])
+    is_pix = (
+        metadata.get("price_evidence") == "VISIBLE_DOM_PRICE_V2"
+        and metadata.get("price_payment_method") == "PIX"
+    )
+    shown_price = f"{brl(price)} no Pix" if is_pix else brl(price)
+    lines.append(f"💰 <b>{shown_price}</b>")
+    if is_pix:
+        alternative = metadata.get("other_payment_price_cents")
+        if type(alternative) is int and alternative > price:
+            lines.append(f"💳 {brl(alternative)} em outros meios de pagamento")
+
+    count = metadata.get("installment_count")
+    amount = metadata.get("installment_cents")
+    interest_free = metadata.get("installment_interest_free")
+    with_interest = metadata.get("installment_with_interest")
+    if (
+        type(count) is int and 2 <= count <= 24
+        and type(amount) is int and 100 <= amount <= 50_000_000
+        and type(interest_free) is bool and type(with_interest) is bool
+        and not (interest_free and with_interest)
+        and price * 0.9 <= count * amount <= price * 2.5
+    ):
+        suffix = " sem juros" if interest_free else " com juros" if with_interest else ""
+        lines.append(f"💳 Parcelamento: {count}x de {brl(amount)}{suffix}")
+
+    if discount:
+        lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
+    if offer.get("coupon"):
+        lines.append(f"🎟 Cupom: {escape(str(offer['coupon']).strip()[:80])}")
+    if offer.get("shipping"):
+        lines.append(f"📦 {escape(str(offer['shipping']).strip()[:120])}")
+    lines.extend(["", f"🏬 {escape(merchant)}", "", "🛒 Confira no Mercado Livre:", escape(url)])
+    return "\n".join(lines)
+
+
 def telegram_direct_message(offer: Mapping[str, Any]) -> str:
-    """Copy direta para Telegram; utiliza exclusivamente fatos comprovados."""
+    """Copy direta para Telegram; fatos comerciais sempre determinísticos."""
+    if offer.get("source_type") == "ML_BROWSER_VERIFIED":
+        return _telegram_browser_message(offer)
+
+    # Keep the manually-reviewed and non-ML paths unchanged.
     discount = verified_discount(offer)
     title = str(offer["title"]).strip()[:180]
     merchant = str(offer["merchant"]).strip()
     url = str(offer["affiliate_url"]).strip()
     if not url.startswith("https://"):
         raise ValueError("link afiliado HTTPS obrigatorio")
-    lines = [
-        "#publi", "",
-        "🔥 PREÇO CAIU!" if discount else "🔥 ACHADO TECH!",
-        title, "",
-    ]
+    lines = ["#publi", "", "🔥 PREÇO CAIU!" if discount else "🔥 ACHADO TECH!", title, ""]
     if discount:
         lines.append(f"🏷 De {brl(discount[0])}")
-    metadata = offer.get("tracking_metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = {}
-    is_browser_pix = (
-        offer.get("source_type") == "ML_BROWSER_VERIFIED"
-        and metadata.get("price_evidence") == "VISIBLE_DOM_PRICE_V2"
-        and metadata.get("price_payment_method") == "PIX"
-    )
-    current = brl(int(offer["current_price_cents"]))
-    lines.append(f"💰 {current} no Pix" if is_browser_pix else f"💰 {current}")
-    # Always include an informative product-specific line, even with no AI.
-    # NVIDIA may customize wording; it never sets verified commercial facts.
-    if offer.get("source_type") == "ML_BROWSER_VERIFIED":
-        from app.services.nvidia_copy import _sanitize_hook
-        hook = _sanitize_hook(metadata.get("copy_hook"))
-        lines.append("✨ " + (hook or _product_blurb(title)))
-    if is_browser_pix:
-        alternate = metadata.get("other_payment_price_cents")
-        if type(alternate) is int and alternate > int(offer["current_price_cents"]):
-            lines.append(f"💳 {brl(alternate)} em outros meios de pagamento")
-    if offer.get("source_type") == "ML_BROWSER_VERIFIED":
-        count = metadata.get("installment_count")
-        amount = metadata.get("installment_cents")
-        interest_free = metadata.get("installment_interest_free")
-        with_interest = metadata.get("installment_with_interest")
-        if (
-            type(count) is int and 2 <= count <= 24
-            and type(amount) is int and 100 <= amount <= 50_000_000
-            and type(interest_free) is bool and type(with_interest) is bool
-            and not (interest_free and with_interest)
-            and int(offer["current_price_cents"]) * 0.9 <= count * amount
-            <= int(offer["current_price_cents"]) * 2.5
-        ):
-            suffix = " sem juros" if interest_free else " com juros" if with_interest else ""
-            lines.append(f"💳 Parcelamento: {count}x de {brl(amount)}{suffix}")
+    lines.append(f"💰 {brl(int(offer['current_price_cents']))}")
     if discount:
         lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
     lines.append(f"🏬 {merchant}")
