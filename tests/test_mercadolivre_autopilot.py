@@ -236,3 +236,35 @@ def test_generator_refuses_if_telegram_label_missing():
     with pytest.raises(MLError,match="ETIQUETA_TELEGRAM_NAO_SELECIONADA"):
         _generate_affiliate_link(Page(),"https://www.mercadolivre.com.br/affiliate-program/generator",
                                  "https://www.mercadolivre.com.br/p/MLB24117280")
+
+
+def test_old_browser_price_extraction_cannot_queue_even_if_stock_and_link_valid(tmp_path):
+    settings = _settings(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    details = _details(price=90000)
+    details.pop("price_evidence")
+    with pytest.raises(MLError, match="VALIDACAO_DO_PRECO_INCOMPLETA"):
+        _queue_validated_product(db, settings, details, "https://meli.la/2MWiFPG")
+    assert not db.rows("SELECT 1 FROM offers")
+
+
+def test_eligible_queue_rejects_modified_or_missing_browser_price_metadata(tmp_path):
+    import json
+
+    settings = _settings(tmp_path)
+    db = Database(settings.database_path)
+    db.init()
+    result = _queue_validated_product(db, settings, _details(), "https://meli.la/2MWiFPG")
+    oid = result["offer_ids"][0]
+    pipe = Pipeline(db, settings)
+    with db.connect() as con:
+        row = con.execute("SELECT tracking_metadata_json FROM offers WHERE id=?", (oid,)).fetchone()
+        metadata = json.loads(row[0])
+        metadata.pop("price_evidence")
+        con.execute(
+            "UPDATE offers SET tracking_metadata_json=? WHERE id=?",
+            (json.dumps(metadata), oid),
+        )
+    assert pipe.curate_and_queue([oid], "stale-price") == []
+    assert not db.rows("SELECT 1 FROM publish_queue")
