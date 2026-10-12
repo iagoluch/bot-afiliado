@@ -173,6 +173,19 @@ async function runOnce(){
       if(search.cards?.length)break;
       if(attempt<8)await new Promise(resolve=>setTimeout(resolve,1200));
     }
+    // O diagnostico no Acer encontrou 20 produtos com aba ATIVA, enquanto
+    // a busca automatica em aba inativa nao encontrou nenhum. Em caso de
+    // grade vazia, ativa UMA vez a mesma aba e repete a leitura sem novo login.
+    let foregroundFallback=false;
+    if(!(search.cards?.length)){
+      await chrome.tabs.update(tab,{active:true});
+      foregroundFallback=true;
+      for(let attempt=0;attempt<8;attempt++){
+        await new Promise(resolve=>setTimeout(resolve,1100));
+        search=(await exec(tab,searchCards))||search;
+        if(search.cards?.length)break;
+      }
+    }
     const cards=search.cards||[];
     const searchDiag=search.diagnostics||{};
     if(cards.length===0){
@@ -181,31 +194,46 @@ async function runOnce(){
         "BUSCA_SEM_TITULOS_DE_PRODUTO";
       await report(reason,"cards="+(searchDiag.layoutCards||0)+
         " | links="+(searchDiag.anchors||0)+" | produtos="+(searchDiag.productLinks||0));
-      return {status:reason,queued:0,keyword,diagnostics:searchDiag};
+      return {status:reason,queued:0,keyword,foregroundFallback,diagnostics:searchDiag};
     }
     let skipped=0;
     const reasons={url:0,product:0,generator:0,bridge:0};
+    const seen=new Set(); // evita ReferenceError ao encontrar o primeiro produto
+    let generatorFailure="", bridgeFailure="";
 
     for(const item of cards.slice(0,6)){
       const source=productUrl(item.url);
       if(!source||seen.has(source)){skipped++;reasons.url++;continue;}
       seen.add(source);
       await navigate(tab,source);
-      const product=await exec(tab,productDetails);
+      let product=null;
+      for(let attempt=0;attempt<6;attempt++){
+        product=await exec(tab,productDetails);
+        if(product)break;
+        if(attempt<5)await new Promise(resolve=>setTimeout(resolve,850));
+      }
       if(!product||!productUrl(product.source_url)){skipped++;reasons.product++;continue;}
       await navigate(tab,cfg.generatorUrl);
+      // O Gerador eh React; carregamento "complete" pode preceder o formulario.
+      for(let attempt=0;attempt<5;attempt++){
+        if(await exec(tab,isGenerator))break;
+        if(attempt<4)await new Promise(resolve=>setTimeout(resolve,800));
+      }
       const generated=await exec(tab,generateLink,product.source_url);
-      if(generated?.status!=="LINK_GERADO"){skipped++;reasons.generator++;continue;}
+      if(generated?.status!=="LINK_GERADO"){skipped++;reasons.generator++;generatorFailure=generated?.status||"SEM_RESPOSTA";continue;}
       const queued=await native({action:"queue",product,affiliate_url:generated.affiliate_url});
       if(queued?.status==="QUEUED_FOR_WORKER"){
         await report("FILA_CRIADA","Oferta validada entregue ao worker do Telegram");
-        return {status:"FILA_CRIADA",queued:1,keyword,skipped};
+        return {status:"FILA_CRIADA",queued:1,keyword,skipped,foregroundFallback};
       }
-      skipped++;reasons.bridge++;
+      skipped++;reasons.bridge++;bridgeFailure=String(queued?.status||"SEM_RESPOSTA").slice(0,80);
     }
     await report("SEM_OFERTA_APROVADA","encontrados="+cards.length+" | analisados="+skipped+
-      " | produto="+reasons.product+" | gerador="+reasons.generator+" | ponte="+reasons.bridge);
-    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,found:cards.length,skipped,reasons};
+      " | produto="+reasons.product+" | gerador="+reasons.generator+" | ponte="+reasons.bridge+
+      (generatorFailure?" | ultimoGerador="+generatorFailure:"")+
+      (bridgeFailure?" | ultimaPonte="+bridgeFailure:""));
+    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,found:cards.length,skipped,reasons,
+      generatorFailure,bridgeFailure,foregroundFallback};
   }catch(error){
     const reason=(error?.message||"ERRO_DESCONHECIDO").slice(0,120);
     await report("PARADO",reason);

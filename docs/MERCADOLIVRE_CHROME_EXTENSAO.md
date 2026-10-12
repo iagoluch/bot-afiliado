@@ -124,6 +124,32 @@ serve para distinguir uma mudança de layout de um bloqueio/redirect normal.
 A correção de seletores deve ser feita apenas depois de verificar o layout
 que efetivamente apareceu no navegador autenticado.
 
+## Correção da busca em segundo plano no Acer
+
+O diagnóstico real de 12/10 mostrou `RESULTADOS_ENCONTRADOS` com
+**136 cards, 52 links de produtos e 20 resultados** na página
+`lista.mercadolivre.com.br/notebook`, sem aviso de acesso.
+
+A busca antiga usava guia inativa e podia obter zero cards. Agora a
+extensão primeiro tenta a execução em segundo plano e, se o resultado
+vier vazio, **ativa a mesma guia uma única vez** para permitir que a
+página renderize a grade. Ela também corrige a variável de deduplicação
+`seen`, que estava ausente e interrompia a execução quando encontrava
+produtos. O fluxo JavaScript passou a ser testado até o encaminhamento
+à ponte Python, sem executar chamadas externas nos testes.
+
+A aba de automação é fechada ao fim; a guia pessoal do Chrome permanece.
+A primeira execução atualizada pode alternar a guia ativa brevemente.
+Só tente o botão **Executar 1 busca e gerar link** depois de atualizar
+com `git pull --ff-only origin main` e clicar **Recarregar** em
+`chrome://extensions`.
+
+Se resultar em `SEM_OFERTA_APROVADA`, observe as contagens separadas:
+`product` (não conseguiu validar preço/compra), `generator`
+(não recebeu link oficial) ou `bridge` (ponte rejeitou a oferta).
+Não repita execuções sem inspecionar o estágio que falhou. Se ocorrer
+`FILA_CRIADA`, o worker pode publicar uma oferta real.
+
 ## 5. Autonomia de seis em seis horas
 
 Somente **depois** do teste real e de conferir seu grupo, ative a chave
