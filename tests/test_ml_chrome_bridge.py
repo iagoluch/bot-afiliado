@@ -33,6 +33,9 @@ def record(**overrides):
         "source_url": "https://www.mercadolivre.com.br/p/MLB24117280",
         "title": "Fone de Ouvido Dapon H02D Bluetooth 5.1",
         "price_cents": 7490,
+        "price_evidence": "VISIBLE_DOM_PRICE_V2",
+        "price_payment_method": "STANDARD",
+        "other_price_cents": None,
         "buy_now_enabled": True,
     }
     p.update(overrides)
