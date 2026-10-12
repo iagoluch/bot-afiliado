@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "IAgo Tech — Mercado Livre",
+  "version": "0.1.0",
+  "description": "Usa a sessão já autenticada do Chrome para consultar ofertas, gerar links pela interface oficial e enviar ao Bot Afiliado local.",
+  "permissions": [
+    "alarms",
+    "tabs",
+    "scripting",
+    "storage",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://www.mercadolivre.com.br/*",
+    "https://mercadolivre.com.br/*",
+    "https://produto.mercadolivre.com.br/*",
+    "https://lista.mercadolivre.com.br/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Autopiloto Mercado Livre"
+  }
+}
