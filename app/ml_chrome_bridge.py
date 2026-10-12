@@ -32,6 +32,29 @@ ML_TECH_TOPICS = frozenset({
 })
 
 
+def _topic_busy(db: Database, topic: str, *, now: datetime | None = None) -> bool:
+    if topic not in ML_TECH_TOPICS:
+        raise MLError("CATEGORIA_INVALIDA")
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=60)).isoformat(timespec="seconds")
+    rows = db.rows(
+        """SELECT 1 FROM offers o
+           WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
+             AND json_extract(o.tracking_metadata_json,'$.ml_topic')=?
+             AND (
+                EXISTS (SELECT 1 FROM publications p
+                        WHERE p.offer_id=o.id AND p.dry_run=0
+                          AND p.published_at>=?)
+                OR EXISTS (SELECT 1 FROM content_jobs j
+                           WHERE j.offer_id=o.id
+                             AND j.status IN ('PENDING','PROCESSING'))
+             )
+           LIMIT 1""",
+        (topic, cutoff),
+    )
+    return bool(rows)
+
+
 def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[str, Any]:
     if not settings.telegram_only_mode:
         raise MLError("TELEGRAM_ONLY_NAO_CONFIGURADO")
@@ -96,23 +119,7 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
     topic = payload.get("topic")
     if not isinstance(topic, str) or topic not in ML_TECH_TOPICS:
         raise MLError("CATEGORIA_INVALIDA")
-    topic_cutoff = (now - timedelta(minutes=60)).isoformat(timespec="seconds")
-    same_topic = db.rows(
-        """SELECT 1 FROM offers o
-           WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
-             AND json_extract(o.tracking_metadata_json,'$.ml_topic')=?
-             AND (
-                EXISTS (SELECT 1 FROM publications p
-                        WHERE p.offer_id=o.id AND p.dry_run=0
-                          AND p.published_at>=?)
-                OR EXISTS (SELECT 1 FROM content_jobs j
-                           WHERE j.offer_id=o.id
-                             AND j.status IN ('PENDING','PROCESSING'))
-             )
-           LIMIT 1""",
-        (topic, topic_cutoff),
-    )
-    if same_topic:
+    if _topic_busy(db, topic, now=now):
         return {"status": "TOPIC_COOLDOWN", "queued": 0}
     existing = db.rows(
         """SELECT 1 FROM offers o
@@ -157,6 +164,17 @@ def process(message: object, *, settings: Settings | None = None, db: Database |
     action = message.get("action")
     if action == "ping":
         return {"status": "OK", "bridge": "ML_CHROME", "version": 1}
+    if action == "topicStatus":
+        try:
+            settings = settings or Settings.from_env()
+            db = db or Database(settings.database_path)
+            db.init()
+            topic = message.get("topic")
+            if not isinstance(topic, str) or topic not in ML_TECH_TOPICS:
+                return {"status": "BLOCKED", "reason": "CATEGORIA_INVALIDA"}
+            return {"status": "TOPIC_COOLDOWN" if _topic_busy(db, topic) else "OK"}
+        except Exception:
+            return {"status": "BLOCKED", "reason": "VERIFICACAO_LOCAL_FALHOU"}
     if action != "queue":
         return {"status": "BLOCKED", "reason": "ACAO_NAO_PERMITIDA"}
     try:
