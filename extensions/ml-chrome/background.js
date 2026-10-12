@@ -315,10 +315,11 @@ async function runOnce(){
     }
     let skipped=0;
     const reasons={url:0,product:0,generator:0,bridge:0};
+    const productFailures={};
     const seen=new Set(); // evita ReferenceError ao encontrar o primeiro produto
     let generatorFailure="", bridgeFailure="";
 
-    for(const item of cards.slice(0,6)){
+    for(const item of cards.slice(0,10)){
       const source=productUrl(item.url);
       if(!source||seen.has(source)){skipped++;reasons.url++;continue;}
       seen.add(source);
@@ -326,10 +327,15 @@ async function runOnce(){
       let product=null;
       for(let attempt=0;attempt<6;attempt++){
         product=await exec(tab,productDetails);
-        if(product)break;
+        if(product?.status==="VALIDATED")break;
         if(attempt<5)await new Promise(resolve=>setTimeout(resolve,850));
       }
-      if(!product||!productUrl(product.source_url)){skipped++;reasons.product++;continue;}
+      if(product?.status!=="VALIDATED"||!productUrl(product.source_url)){
+        skipped++;reasons.product++;
+        const failure=product?.status||"PRODUCT_DOM_UNAVAILABLE";
+        productFailures[failure]=(productFailures[failure]||0)+1;
+        continue;
+      }
       await navigate(tab,cfg.generatorUrl);
       // O Gerador eh React; carregamento "complete" pode preceder o formulario.
       for(let attempt=0;attempt<5;attempt++){
@@ -349,8 +355,10 @@ async function runOnce(){
       " | produto="+reasons.product+" | gerador="+reasons.generator+" | ponte="+reasons.bridge+
       (generatorFailure?" | ultimoGerador="+generatorFailure:"")+
       (bridgeFailure?" | ultimaPonte="+bridgeFailure:""));
-    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,found:cards.length,skipped,reasons,
-      generatorFailure,bridgeFailure,foregroundFallback};
+    await chrome.storage.local.set({lastDiagnostics:{status:"PRODUCT_VALIDATION",
+      keyword,found:cards.length,examined:skipped,reasons,productFailures}});
+    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,found:cards.length,skipped,
+      reasons,productFailures,generatorFailure,bridgeFailure,foregroundFallback};
   }catch(error){
     const reason=(error?.message||"ERRO_DESCONHECIDO").slice(0,120);
     await report("PARADO",reason);
