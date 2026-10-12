@@ -47,6 +47,11 @@ function extract(prices, context){
   assert.equal(out.other_price_cents,90000);
 }
 {
+  // One recognized R$900 must not be published when R$759 is also displayed.
+  const out=extract([amount(90000)],"R$ 900,00 em outros meios e R$ 759,00 no Pix");
+  assert.equal(out.status,"UNPARSED_LOWER_VISIBLE_PRICE");
+}
+{
   const out=extract([amount(90000),amount(75900)],"Preço 900 e 759 sem condição identificada");
   assert.equal(out.status,"AMBIGUOUS_PAYMENT_PRICES");
 }
