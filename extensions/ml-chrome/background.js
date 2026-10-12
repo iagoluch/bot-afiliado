@@ -151,7 +151,7 @@ async function generateLink(sourceUrl){
   return {status:"LINK_NAO_ENCONTRADO"};
 }
 async function report(status,detail=""){
-  await chrome.storage.local.set({lastStatus:status,lastDetail:detail,lastAttempt:Date.now()});
+  await chrome.storage.local.set({lastStatus:status,lastDetail:detail,lastDiagnostics:null,lastAttempt:Date.now()});
 }
 async function runOnce(){
   if(busy)return {status:"OCUPADO"};
@@ -265,7 +265,7 @@ chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
     if(!msg||typeof msg!=="object")return {status:"ACAO_INVALIDA"};
     if(msg.action==="status"){
       const cfg=await chrome.storage.local.get({enabled:false,generatorUrl:"",
-        lastStatus:"AGUARDANDO_CONFIGURACAO",lastDetail:""});
+        lastStatus:"AGUARDANDO_CONFIGURACAO",lastDetail:"",lastDiagnostics:null});
       let bridge="NAO_TESTADO";
       try{bridge=(await native({action:"ping"}))?.status||"INDISPONIVEL";}
       catch(_e){bridge="NAO_INSTALADA";}
