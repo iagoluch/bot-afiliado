@@ -142,8 +142,14 @@ def collection_status(settings: Settings) -> dict[str, dict[str, Any]]:
             ),
             "credentials_present": shopee_credentials,
             "automatic_connector_enabled": False,
+            "affiliate_discovery_available": True,
+            "affiliate_discovery_state": (
+                "AWAITING_LIVE_SCHEMA_AND_STOCK_VALIDATION"
+                if shopee_credentials else "WAITING_FOR_APPROVED_APP_ID_AND_SECRET"
+            ),
+            "candidate_staging_no_publication": True,
             "network_calls": 0,
-            "fallback": "add-offer or assisted-import JSON via stdin",
+            "fallback": "shopee-affiliate-discover (credentialed) or add-offer",
         },
         "mercadolivre": {
             "status": "BLOCKED_UNVERIFIED_AFFILIATE_CONTRACT",
