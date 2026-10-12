@@ -17,6 +17,7 @@ from app.services.instagram_graph import InstagramReelPublisher
 from app.services.llm import copy_preview
 from app.services.p1 import P1Pipeline
 from app.services.pipeline import Pipeline
+from app.shopee_affiliate_api import DEFAULT_KEYWORDS, discover as shopee_discover, stage_candidates as shopee_stage
 from app.worker import WorkerAlreadyRunning, WorkerLock, runtime_status, worker_lock_path
 
 
@@ -139,6 +140,16 @@ def main() -> None:
     add_offer.add_argument("--image-url", help="URL HTTPS oficial da foto do produto")
     add_offer.add_argument("--confirm-reviewed", action="store_true", help="Confirma conferência manual de preço, estoque e link oficial antes da postagem")
     add_offer.add_argument("--campaign", default="assisted")
+    shopee_api = sub.add_parser(
+        "shopee-affiliate-discover",
+        help="Busca ofertas na Open API de afiliados Shopee; nunca publica automaticamente",
+    )
+    shopee_api.add_argument("--keyword", action="append", dest="keywords", help="Ate 5 buscas tecnologicas")
+    shopee_api.add_argument("--limit", type=int, default=5)
+    shopee_api.add_argument(
+        "--stage", action="store_true",
+        help="Armazena candidatos sem estoque validado, sem gerar fila ou publicar",
+    )
     sub.add_parser(
         "collection-status",
         help="Mostra bloqueios e capabilities de coleta sem abrir conexao externa",
@@ -305,6 +316,21 @@ def main() -> None:
             [record],
             campaign=args.campaign,
         )
+    elif args.command == "shopee-affiliate-discover":
+        result = shopee_discover(
+            settings, keywords=tuple(args.keywords or DEFAULT_KEYWORDS),
+            limit=args.limit,
+        )
+        if args.stage and result["status"] == "CANDIDATES_ONLY_STOCK_UNVERIFIED":
+            staging = shopee_stage(db, result)
+            result = {
+                "status": staging["status"],
+                "searched_keywords": result["searched_keywords"],
+                "found": len(result["candidates"]),
+                "rejected_or_unverifiable": result["rejected_or_unverifiable"],
+                "staging": staging,
+                "may_publish_to_telegram": False,
+            }
     elif args.command == "collection-status":
         result = collection_status(settings)
     elif args.command == "amazon-search":
