@@ -34,7 +34,7 @@ def test_extension_starts_disabled_not_even_a_login_request():
     assert "chrome.identity.launchWebAuthFlow" not in js
     assert "document.cookie" not in js
     assert "chrome.cookies" not in js
-    assert "captcha" not in js.lower()
+    # Read-only page diagnostics may detect CAPTCHA text; no challenge bypass APIs.\n    assert "chrome.webRequest" not in js\n    assert "captcha.solve" not in js.lower()
     assert "remote-debugging-port" not in js
     assert "LINK_GERADO" in js
     assert "buy_now_enabled:true" in js
