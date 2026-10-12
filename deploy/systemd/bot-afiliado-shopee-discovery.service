@@ -1,0 +1,13 @@
+[Unit]
+Description=Bot Afiliado - descoberta oficial Shopee (somente candidatos)
+Documentation=https://github.com/iagoluch/bot-afiliado/blob/main/docs/SHOPEE_AFFILIATE_DISCOVERY.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/bot-afiliado
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/bot-afiliado/.venv/bin/python -m app.cli shopee-affiliate-discover --keyword ssd --keyword notebook --keyword celular --keyword headset --limit 5 --stage
+TimeoutStartSec=150
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
