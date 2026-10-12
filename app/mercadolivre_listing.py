@@ -88,9 +88,13 @@ def _price_cents(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return None
     try:
+        if len(str(value)) > 48:
+            return None
         amount = Decimal(str(value))
+        if not amount.is_finite() or amount <= 0:
+            return None
         cents = amount * 100
-        if amount <= 0 or not amount.is_finite() or cents != cents.to_integral_value():
+        if cents != cents.to_integral_value() or cents > 1_000_000_000_000:
             return None
         return int(cents)
     except (InvalidOperation, ValueError, OverflowError):
@@ -148,7 +152,7 @@ def inspect_listing(
         raise CatalogProbeError("Anuncio nao pertence ao produto consultado")
     try:
         quantity = int(item.get("available_quantity") or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         quantity = 0
     cents = _price_cents(item.get("price"))
     permalink = _official_https(item.get("permalink"), PERMALINK_HOSTS)
