@@ -42,12 +42,21 @@ function fakePage({title="Notebook 15 polegadas",button="Adicionar ao carrinho",
   };
 }
 function check(doc){
-  return vm.runInNewContext(src.slice(from,to)+"\nproductDetails();",{
+  // Match chrome.scripting.executeScript({func: productDetails}): the browser
+  // gets ONLY the function serialization, never sibling helper declarations.
+  const pageGlobals={
     document:doc,
     location:{origin:"https://www.mercadolivre.com.br",pathname:"/notebook/p/MLB24117280"},
     getComputedStyle:()=>({textDecorationLine:"none"}),
-  },{timeout:2000});
+  };
+  return vm.runInNewContext("("+src.slice(from,to).trim()+")()",pageGlobals,{timeout:2000});
 }
+
+const invalidDom = {
+  querySelector:()=>{throw Error("Protected page DOM");},
+  querySelectorAll:()=>[],
+};
+assert.equal(check(invalidDom).status,"PRODUCT_INSPECTION_ERROR");
 
 const valid=check(fakePage({values:[302500],original:526500,
   priceContext:"R$ 5.265,00\nR$ 3.025,00 no Pix\n10x R$ 342,30 sem juros"}));
