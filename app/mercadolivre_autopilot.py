@@ -300,7 +300,7 @@ def run_once(settings: Settings, generator_url: str, *, keyword: str | None = No
     skipped = 0
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
-            str(PROFILE), headless=False, viewport={"width": 1200, "height": 800},
+            str(PROFILE), headless=os.getenv("ML_AUTO_HEADLESS", "true").strip().lower() not in {"false", "0", "no"}, viewport={"width": 1200, "height": 800},
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
