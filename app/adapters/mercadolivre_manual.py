@@ -46,6 +46,10 @@ class MercadoLivreManualAdapter(AffiliateAdapter):
         if not current:
             raise ValueError("current_price Mercado Livre precisa ser positivo")
         tracking_metadata: dict[str, Any] = {"official_link_preserved": True}
+        # A marcação depende de confirmação explícita no cadastro local.
+        # Não infere afiliado, desconto, estoque ou avaliação.
+        if record.get("manual_review_confirmed") is True:
+            tracking_metadata["manual_review_confirmed"] = True
         if unverified_reference is not None:
             tracking_metadata["unverified_reference_price_cents"] = unverified_reference
         collected_at = str(record.get("collected_at") or utc_now())

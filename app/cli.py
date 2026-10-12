@@ -137,6 +137,7 @@ def main() -> None:
     add_offer.add_argument("--commission-rate")
     add_offer.add_argument("--stock-status", choices=("IN_STOCK", "OUT_OF_STOCK", "UNKNOWN"), default="UNKNOWN")
     add_offer.add_argument("--image-url", help="URL HTTPS oficial da foto do produto")
+    add_offer.add_argument("--confirm-reviewed", action="store_true", help="Confirma conferência manual de preço, estoque e link oficial antes da postagem")
     add_offer.add_argument("--campaign", default="assisted")
     sub.add_parser(
         "collection-status",
@@ -295,6 +296,7 @@ def main() -> None:
             "commission_rate": args.commission_rate or "",
             "stock_status": args.stock_status,
             "image_urls": args.image_url or "",
+            "manual_review_confirmed": args.confirm_reviewed,
         }
         result = _ingest_assisted(
             pipeline,

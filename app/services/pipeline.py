@@ -99,11 +99,36 @@ class Pipeline:
     def ingest_shopee(self, path: Path) -> list[int]:
         return self.ingest_source(path, "shopee")
 
+    def _manually_reviewed_telegram_eligible(self, offer: dict) -> bool:
+        """Permite piloto de link ML validado pelo operador, sem inventar score.
+
+        A confirmação é explícita no add-offer; aceita apenas ML, Telegram-only,
+        estoque conferido e observação recente (até 20 minutos).
+        O restante dos gates de compliance/distribuição continua obrigatório.
+        """
+        if not self.settings.telegram_only_mode or offer.get("merchant") != "Mercado Livre":
+            return False
+        if offer.get("source_type") != "MANUAL_OFFICIAL_LINK":
+            return False
+        metadata = offer.get("tracking_metadata")
+        if not isinstance(metadata, dict) or metadata.get("manual_review_confirmed") is not True:
+            return False
+        if offer.get("stock_status") != "IN_STOCK":
+            return False
+        try:
+            when = datetime.fromisoformat(str(offer["collected_at"]).replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                return False
+            seconds = (datetime.now(timezone.utc) - when.astimezone(timezone.utc)).total_seconds()
+            return 0 <= seconds <= 20 * 60
+        except (ValueError, KeyError, TypeError, OverflowError):
+            return False
+
     def curate_and_queue(self, offer_ids: list[int], campaign_id: str = "organic") -> list[int]:
         queue_ids: list[int] = []
         for offer_id in offer_ids:
             score, classification = score_offer(self.db, offer_id)
-            if classification not in {"GOOD", "EXCELLENT"} or is_in_cooldown(
+            if is_in_cooldown(
                 self.db,
                 offer_id,
                 "telegram",
@@ -115,6 +140,8 @@ class Pipeline:
             if row is None:
                 continue
             offer = verified_offer_data(self.db, offer_id, row)
+            if classification not in {"GOOD", "EXCELLENT"} and not self._manually_reviewed_telegram_eligible(offer):
+                continue
             validate_offer(offer)
             try:
                 validate_distribution(offer, "telegram", self.settings)
