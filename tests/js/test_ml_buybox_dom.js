@@ -4,7 +4,7 @@ const fs=require("node:fs");
 const path=require("node:path");
 const vm=require("node:vm");
 const src=fs.readFileSync(path.join(__dirname,"../../extensions/ml-chrome/background.js"),"utf8");
-const from=src.indexOf("function extractVisibleProductPrice(){");
+const from=src.indexOf("function productDetails(){");
 const to=src.indexOf("\nfunction isGenerator(){",from);
 assert(from>=0&&to>from);
 
