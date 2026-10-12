@@ -87,7 +87,19 @@ function searchCards(){
       anchors:document.querySelectorAll("a[href]").length,
       productLinks:productLinkCount,
       results:results.length,
-      readyState:document.readyState
+      readyState:document.readyState,
+      pageHost:(typeof location!=="undefined"?location.hostname:"").slice(0,90),
+      pagePath:(typeof location!=="undefined"?location.pathname:"").slice(0,160),
+      pageTitle:String(document.title||"").slice(0,100),
+      heading:String(document.querySelector?.("h1")?.textContent||"").trim().slice(0,100),
+      hasResultsText:/\bresultados\b|mais relevantes/i.test(document.body?.innerText||""),
+      hasAccessWarning:/limite de tentativas|verifique sua identidade|não sou um robô|captcha|acesso negado/i.test(document.body?.innerText||""),
+      sampleLinks:[...document.querySelectorAll("a[href]")].slice(0,150).map(a=>{
+        try{
+          const u=new URL(a.href);
+          return (u.protocol==="https:" ? u.hostname+u.pathname.slice(0,105) : "");
+        }catch(_e){return "";}
+      }).filter(x=>x && !x.startsWith("javascript:")).filter((x,i,arr)=>arr.indexOf(x)===i).slice(0,7)
     }
   };
 }
@@ -203,6 +215,32 @@ async function runOnce(){
     busy=false;
   }
 }
+async function diagnoseSearch(){
+  // One visible, user-initiated diagnostic tab. Does not generate a link,
+  // talk to the native queue, or send anything to Telegram.
+  let tab=null;
+  try{
+    const keyword="notebook";
+    const url="https://lista.mercadolivre.com.br/"+keyword;
+    tab=(await chrome.tabs.create({url,active:true})).id;
+    await waitTab(tab);
+    await ensurePage(tab);
+    let search={cards:[],diagnostics:{}};
+    for(let attempt=0;attempt<8;attempt++){
+      search=(await exec(tab,searchCards))||search;
+      if(search.cards?.length)break;
+      if(attempt<7)await new Promise(done=>setTimeout(done,1200));
+    }
+    return {
+      status:search.cards?.length?"RESULTADOS_ENCONTRADOS":"PAGINA_SEM_PRODUTOS_RECONHECIDOS",
+      keyword,found:search.cards?.length||0,
+      diagnostics:search.diagnostics,
+      instruction:"A aba de busca ficara aberta para inspecao. Nenhuma oferta foi enviada."
+    };
+  }catch(error){
+    return {status:"DIAGNOSTICO_FALHOU",reason:String(error?.message||"ERRO").slice(0,100)};
+  }
+}
 async function resetAlarm(){
   await chrome.alarms.clear(ALARM);
   const data=await chrome.storage.local.get({enabled:false,generatorUrl:""});
@@ -244,6 +282,7 @@ chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
       await resetAlarm();
       return {status:msg.enabled===true?"AUTOMATICO_ATIVADO":"AUTOMATICO_DESATIVADO"};
     }
+    if(msg.action==="diagnoseSearch")return await diagnoseSearch();
     if(msg.action==="runOnce")return await runOnce();
     return {status:"ACAO_DESCONHECIDA"};
   })().then(reply).catch(()=>reply({status:"FALHA_EXTENSAO"}));
