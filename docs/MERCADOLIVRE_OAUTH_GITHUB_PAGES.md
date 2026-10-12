@@ -111,3 +111,17 @@ O comando faz até duas leituras oficiais: `GET /products/MLB27880616` e, quando
 **ATENÇÃO:** `product_url` é um endereço comum e NÃO é link de afiliado. A consulta nunca grava no SQLite nem autoriza envio ao Telegram; exige link comissionado gerado pelos meios oficiais do Programa de Afiliados. Dados de estoque/preço devem ser novamente confirmados próximo à publicação. Não inventar desconto/cupom.
 
 A documentação oficial para o vencedor da buy box está em: https://developers.mercadolivre.com.br/pt_br/imoveis-gerenciamento-de-perguntas-e-contatos/concorrencia-em-catalogo.
+
+## 7. Produto sem vencedor: encontrar anúncios alternativos
+
+Caso o comando `mercadolivre_listing MLB27880616` retorne `NO_ACTIVE_LISTING`, tente:
+
+```bash
+.venv/bin/python -m app.mercadolivre_candidates MLB27880616 --limit 5
+```
+
+Esta consulta oficial histórica (`GET /products/{id}/items`) busca anúncios concorrentes associados ao catálogo, sem exigir `buy_box_winner`. Pode retornar HTTP 403 para aplicações sem permissão atual. Os preços/estoques resultantes são apenas indicativos; revalide antes de divulgar. Ela **não** gera links de afiliado.
+
+Para ganhar comissão no Mercado Livre **agora**, siga o processo oficial: no portal de Afiliados, abra **Gerador de Links**, insira links de páginas específicas de produto (não resultados de busca nem categorias), escolha etiqueta do Telegram, gere/copiei os links originais e alimente o bot com `app.cli add-offer --adapter mercadolivre` ou `assisted-import`. O worker só deve publicar quando tiver URL comissionada oficial, preço conferido, produto elegível e categoria tech. O bot não possui API de conversão de links do programa homologada; o OAuth Developers não substitui a Central de Afiliados.
+
+Links: https://www.mercadolivre.com.br/l/afiliados-gere-seus-links e https://www.mercadolivre.com.br/l/checklist
