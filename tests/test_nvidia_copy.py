@@ -87,5 +87,6 @@ def test_rendering_is_stable_with_verified_hook(tmp_path):
     assert "Esse mouse merece entrar na sua lista de periféricos." in text
     assert "R$ 759,00 no Pix" in text
     assert "R$ 900,00 em outros meios" in text
-    assert text.endswith("https://meli.la/2MWiFPG")
+    assert text.startswith("<b>")  # Notification shows creative copy first.
+    assert text.endswith("https://meli.la/2MWiFPG\n\n#publi")
     assert text == telegram_direct_message(offer)
