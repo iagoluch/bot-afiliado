@@ -80,3 +80,20 @@ Por último, verifique as limitações atuais das fontes:
 ```
 
 Fonte oficial de OAuth: https://developers.mercadolivre.com.br/autenticacao-e-autorizacao
+
+
+## 5. Primeiro teste do catálogo oficial (somente leitura)
+
+Depois que `mercadolivre_oauth status` indicar `connected: true`, faça uma busca com o token local:
+
+```bash
+.venv/bin/python -m app.mercadolivre_catalog "SSD NVMe" --limit 5
+```
+
+O comando usa `GET https://api.mercadolibre.com/products/search?site_id=MLB&status=active&q=SSD+NVMe&limit=5`, conforme a documentação oficial. Retorna IDs, nomes e, quando disponíveis, fotos oficiais sem expor credenciais. Nenhuma oferta é cadastrada no SQLite e nada é enviado ao Telegram.
+
+Se receber `HTTP 403`, essa conta não tem o escopo/recurso necessário; não repita requisições nem utilize scraping. Um `HTTP 429` indica limite de chamadas: aguarde.
+
+**Atenção:** cadastro de catálogo (`/products/search`) não é anúncio vendável (`/items/{id}`). O retorno não comprova preço, estoque, promoção ou comissão. O bot só poderá publicar depois de obter esses fatos e um link comissionado oficial validado. Esta sondagem não tenta construir links de afiliados por conta própria.
+
+Referência: https://developers.mercadolivre.com.br/pt_br/publicacao-de-produtos/buscador-de-produtos
