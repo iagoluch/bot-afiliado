@@ -102,3 +102,38 @@ Depois do piloto, para limitar volume, mantenha `TELEGRAM_MAX_POSTS_PER_HOUR` em
 ### Critério objetivo de entrega
 
 Worker ativo em `database`, produto verdadeiro com link oficial, score elegível, publicação Telegram `PUBLISHED` confirmada pelo ID, sem duplicação. A coleta autônoma ainda depende do acesso/documentação externa. 
+
+## Oferta inicial revisada no Mercado Livre sem inventar reputação ou comissão
+
+Para uma oferta real gerada pela Central de Afiliados do ML, o operador deve
+confirmar no produto original **nome, preço, estoque, elegibilidade e validade
+do link comissionado**. A opção `--confirm-reviewed` registra essa confirmação.
+Ela permite o piloto Telegram-only mesmo sem score de avaliações ou histórico
+de vendas, somente se o estoque estiver marcado `IN_STOCK` e a coleta tiver
+menos de 20 minutos. Não marca automaticamente avaliações, desconto ou comissão.
+Não dispensa `DRY_RUN`, `TELEGRAM_REAL_ENABLED` e os outros gates.
+
+Exemplo estrutural: substitua todos os campos em maiúsculas pelos dados
+verificados na página original do produto. A URL curta abaixo é somente um
+exemplo de link **fornecido pelo operador**; a origem comissionada precisa ser
+confirmada na Central de Afiliados:
+
+```bash
+.venv/bin/python -m app.cli add-offer \
+  --adapter mercadolivre \
+  --external-id MLB_ID_DO_ANUNCIO \
+  --title "TITULO_REAL_DO_PRODUTO" \
+  --category informatica \
+  --price PRECO_ATUAL_REAL \
+  --source-url "https://www.mercadolivre.com.br/p/MLB_ID_REAL" \
+  --affiliate-url "https://meli.la/2MWiFPG" \
+  --stock-status IN_STOCK \
+  --confirm-reviewed
+```
+
+No primeiro teste mantenha `DRY_RUN=true`, o worker rodando, e verifique
+`events --limit 20` para um `SIMULATED`. Para publicação real, pare o worker,
+ative `DRY_RUN=false`, `TELEGRAM_ONLY_MODE=true`,
+`TELEGRAM_REAL_ENABLED=true`, reinicie e cadastre novamente a oferta
+*atualmente verificada* com `--confirm-reviewed`. Não reutilize preço
+antigo ou anuncie produto sem estoque confirmado.
