@@ -247,7 +247,7 @@ class Worker:
         db: Database,
         settings: Settings,
         pipeline: Pipeline,
-        content_pipeline: P1Pipeline,
+        content_pipeline: P1Pipeline | None,
         source: Path | None,
         *,
         idle_seconds: float,
@@ -360,6 +360,8 @@ class Worker:
                         "mode": "telegram_only",
                     }
                 else:
+                    if self.content_pipeline is None:
+                        raise RuntimeError("pipeline P1 indisponivel fora do modo Telegram-only")
                     result = retry_sqlite(
                         lambda: self.content_pipeline.generate_offer(offer_id, str(job["campaign_id"])),
                         wait=self._wait,
@@ -503,6 +505,13 @@ def _source_from_env(settings: Settings) -> Path | None:
     return DEFAULT_SOURCE
 
 
+def _content_pipeline_for_worker(db: Database, settings: Settings) -> P1Pipeline | None:
+    """Nao inicializa a pilha P1 nem exige URL publica no worker Telegram-only."""
+    if settings.telegram_only_mode:
+        return None
+    return P1Pipeline(db, settings)
+
+
 def main() -> None:
     settings = Settings.from_env()
     source_mode = _source_mode_from_env()
@@ -526,7 +535,7 @@ def main() -> None:
                 db,
                 settings,
                 Pipeline(db, settings, source_adapter=adapter),
-                P1Pipeline(db, settings),
+                _content_pipeline_for_worker(db, settings),
                 source,
                 idle_seconds=_positive_float_env("WORKER_IDLE_SECONDS", 30.0),
                 error_backoff_seconds=_positive_float_env("WORKER_ERROR_BACKOFF_SECONDS", 60.0),
