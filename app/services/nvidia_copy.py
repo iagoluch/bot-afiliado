@@ -50,7 +50,9 @@ def suggest_hook(
     system = (
         "Voce cria APENAS uma frase curta de convite em portugues brasileiro "
         "para divulgacao de produto de tecnologia em Telegram. Maximo 80 "
-        "caracteres. TOM natural e variado; nao repita o titulo todo. "
+        "caracteres. TOM natural e variado; mencione o tipo concreto "
+        "do produto presente no titulo, sem repetir o titulo inteiro. "
+        "Evite frases genericas que serviriam para qualquer produto. "
         "Sem dados factuais novos: nao afirme recursos tecnicos, compatibilidade, "
         "qualidade, autenticidade, garantia, frete, estoque, desconto, "
         "urgencia, economia, porcentagens ou precos. "

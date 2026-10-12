@@ -95,6 +95,20 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         or not price < alternate <= 50_000_000
     ):
         raise MLError("PRECO_ALTERNATIVO_INVALIDO")
+    count = product.get("installment_count")
+    installment = product.get("installment_cents")
+    interest_free = product.get("installment_interest_free")
+    with_interest = product.get("installment_with_interest")
+    if any(value is not None for value in (count, installment, interest_free, with_interest)):
+        if (
+            type(count) is not int or not 2 <= count <= 24
+            or type(installment) is not int or not 100 <= installment <= 50_000_000
+            or type(interest_free) is not bool or type(with_interest) is not bool
+            or (interest_free and with_interest)
+            or count * installment < price * 0.9
+            or count * installment > price * 2.5
+        ):
+            raise MLError("PARCELAMENTO_SEM_COMPROVACAO")
     if product.get("buy_now_enabled") is not True:
         raise MLError("COMPRA_NAO_CONFIRMADA")
     if affiliate_from_text(affiliate) != affiliate:
@@ -140,6 +154,10 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         "price_evidence": "VISIBLE_DOM_PRICE_V2",
         "price_payment_method": method,
         "other_price_cents": alternate,
+        "installment_count": count,
+        "installment_cents": installment,
+        "installment_interest_free": interest_free,
+        "installment_with_interest": with_interest,
         "ml_topic": topic,
         "stock_status": "IN_STOCK",
         "confirmed_at": now.isoformat(timespec="seconds"),

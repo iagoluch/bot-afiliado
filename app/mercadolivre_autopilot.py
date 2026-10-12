@@ -292,6 +292,20 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
         or alternate > 50_000_000
     ):
         raise MLError("PRECO_ALTERNATIVO_INVALIDO")
+    count = details.get("installment_count")
+    installment = details.get("installment_cents")
+    interest_free = details.get("installment_interest_free")
+    with_interest = details.get("installment_with_interest")
+    if any(x is not None for x in (count, installment, interest_free, with_interest)):
+        if (
+            type(count) is not int or not 2 <= count <= 24
+            or type(installment) is not int or not 100 <= installment <= 50_000_000
+            or type(interest_free) is not bool or type(with_interest) is not bool
+            or (interest_free and with_interest)
+            or count * installment < details["price_cents"] * 0.9
+            or count * installment > details["price_cents"] * 2.5
+        ):
+            raise MLError("PARCELAMENTO_INVALIDO")
     timestamp = datetime.fromisoformat(details["confirmed_at"].replace("Z", "+00:00"))
     if (datetime.now(timezone.utc) - timestamp).total_seconds() > 300:
         raise MLError("VALIDACAO_DE_PRECO_EXPIRADA")
@@ -316,6 +330,10 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
             "price_evidence": "VISIBLE_DOM_PRICE_V2",
             "price_payment_method": details["price_payment_method"],
             "other_payment_price_cents": alternate,
+            "installment_count": count,
+            "installment_cents": installment,
+            "installment_interest_free": interest_free,
+            "installment_with_interest": with_interest,
             "ml_topic": details.get("ml_topic"),
             "copy_hook": details.get("copy_hook"),
             "copy_provider": "nemotron-3-super" if details.get("copy_hook") else "template",

@@ -65,12 +65,36 @@ assert.equal(valid.price_cents,302500);
 assert.equal(valid.price_payment_method,"PIX");
 assert.equal(valid.price_evidence,"VISIBLE_DOM_PRICE_V2");
 assert.equal(valid.buy_now_enabled,true);
+assert.equal(valid.installment_count,10);
+assert.equal(valid.installment_cents,34230);
+assert.equal(valid.installment_interest_free,true);
+assert.equal(valid.installment_with_interest,false);
+
 
 const standard=check(fakePage({values:[390000],
   priceContext:"R$ 3.900,00\n10x R$ 390,00 sem juros",button:"Comprar agora"}));
 assert.equal(standard.status,"VALIDATED");
 assert.equal(standard.price_cents,390000);
 assert.equal(standard.price_payment_method,"STANDARD");
+assert.equal(standard.installment_count,10);
+assert.equal(standard.installment_cents,39000);
+assert.equal(standard.installment_interest_free,true);
+
+const noCard=check(fakePage({priceContext:"R$ 3.025,00 no Pix"}));
+assert.equal(noCard.status,"VALIDATED");
+assert.equal(noCard.installment_count,null);
+
+const falseCard=check(fakePage({priceContext:"R$ 3.025,00 no Pix\n10x R$ 12,30 sem juros"}));
+assert.equal(falseCard.status,"VALIDATED");
+assert.equal(falseCard.installment_count,null);
+
+const pricedWithInterest=check(fakePage({
+  values:[302500], priceContext:"R$ 3.025,00\n10x de R$ 342,30 com juros"
+}));
+assert.equal(pricedWithInterest.installment_count,10);
+assert.equal(pricedWithInterest.installment_interest_free,false);
+assert.equal(pricedWithInterest.installment_with_interest,true);
+
 
 const noBuy=check(fakePage({button:"Comprar indisponível"}));
 assert.equal(noBuy.status,"PURCHASE_CONTROL_MISSING");

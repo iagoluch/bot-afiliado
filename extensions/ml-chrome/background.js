@@ -203,9 +203,36 @@ function productDetails(){
     if(values.length===2&&pixMention&&!otherMention){
       return {status:"UNLABELED_ALTERNATIVE_PRICE"};
     }
+    // Optional card installments: accept only an explicit, visible buy-box
+    // amount paired with a number of installments. Never infer card terms
+    // from the cash price or describe interest as free unless it says so.
+    const plans=[];
+    const installmentRe=/\b([2-9]|1\d|2[0-4])\s*x\s*(?:de\s*)?(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})\b([^\r\n]{0,28})/gi;
+    for(const match of context.matchAll(installmentRe)){
+      const count=Number(match[1]);
+      const [whole,cents]=match[2].replace(/\./g,"").split(",");
+      const amount=Number(whole)*100+Number(cents);
+      const total=count*amount;
+      // Defensive bound for stale prices or unrelated recommendations.
+      if(!Number.isSafeInteger(total)||amount<100||
+        total<price*0.9||total>price*2.5)continue;
+      const suffix=match[3]||"";
+      plans.push({count,amount,
+        interestFree:/\bsem juros\b/i.test(suffix),
+        withInterest:/\bcom juros\b/i.test(suffix)});
+    }
+    plans.sort((a,b)=>b.count-a.count);
+    const plan=plans[0];
+    const conflicting=!!plan&&plans.some(x=>x.count===plan.count&&
+      (x.amount!==plan.amount||x.interestFree!==plan.interestFree||
+       x.withInterest!==plan.withInterest));
     return {status:"VERIFIED",price_cents:price,
       price_payment_method:pixMention?"PIX":"STANDARD",
       other_price_cents:alternative,
+      installment_count:plan&&!conflicting?plan.count:null,
+      installment_cents:plan&&!conflicting?plan.amount:null,
+      installment_interest_free:plan&&!conflicting?plan.interestFree:null,
+      installment_with_interest:plan&&!conflicting?plan.withInterest:null,
       price_evidence:"VISIBLE_DOM_PRICE_V2",
       price_source:tierUsed};
   }
