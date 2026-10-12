@@ -133,6 +133,11 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     ):
         suffix = " sem juros" if interest_free else " com juros" if with_interest else ""
         lines.append(f"💳 Parcelamento: {count}x de {brl(amount)}{suffix}")
+    else:
+        # A verified amount was not visible on the product page.
+        # Keep the card purchase cue without promising that credit or
+        # installments are available for this product/account.
+        lines.append("💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio.")
 
     if discount:
         lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
