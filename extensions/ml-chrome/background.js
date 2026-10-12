@@ -1,7 +1,34 @@
 "use strict";
 /* Operates only visible DOM in ordinary authenticated Chrome, no cookies/API. */
 const HOST="br.iagotech.botafiliado", ALARM="ml-tech-cycle";
-const WORDS=["ssd nvme","fone bluetooth","notebook","mouse gamer","teclado mecanico","monitor gamer","celular","memoria ram","tablet","carregador usb c"];
+const TOPICS=[
+  {topic:"ssd",query:"ssd nvme"},
+  {topic:"audio",query:"fone bluetooth"},
+  {topic:"notebook",query:"notebook"},
+  {topic:"mouse",query:"mouse gamer"},
+  {topic:"teclado",query:"teclado mecanico"},
+  {topic:"monitor",query:"monitor gamer"},
+  {topic:"celular",query:"celular"},
+  {topic:"ram",query:"memoria ram ddr4"},
+  {topic:"tablet",query:"tablet android"},
+  {topic:"carregador",query:"carregador usb c"},
+  {topic:"gpu",query:"placa de video"},
+  {topic:"rede",query:"roteador wifi"},
+  {topic:"webcam",query:"webcam"},
+  {topic:"placa_mae",query:"placa mae"},
+  {topic:"wearable",query:"smartwatch"},
+  {topic:"console",query:"controle xbox"},
+  {topic:"impressora",query:"impressora"},
+  {topic:"pendrive",query:"pendrive"},
+  {topic:"gabinete",query:"gabinete gamer"},
+  {topic:"fonte",query:"fonte atx"},
+  {topic:"smart_home",query:"tomada inteligente"},
+  {topic:"armazenamento",query:"hd externo"},
+  {topic:"cpu",query:"processador ryzen"},
+  {topic:"microfone",query:"microfone usb"}
+];
+const WORDS=TOPICS.map(x=>x.query);
+const TOPIC_BY_QUERY=Object.fromEntries(TOPICS.map(x=>[x.query,x.topic]));
 let busy=false;
 function official(url) {
   try {
@@ -223,7 +250,16 @@ async function runOnce(){
     if(!official(cfg.generatorUrl))throw Error("CONFIGURE_O_GERADOR");
     if((await native({action:"ping"})).status!=="OK")throw Error("PONTE_LOCAL_FALHOU");
     const keyword=WORDS[(cfg.index||0)%WORDS.length];
+    const topic=TOPIC_BY_QUERY[keyword];
     await chrome.storage.local.set({index:(cfg.index||0)+1});
+    // Local SQLite is authoritative: avoid searching/generating links for a
+    // category already queued or posted in the last 60 minutes.
+    const topicStatus=await native({action:"topicStatus",topic});
+    if(topicStatus?.status==="TOPIC_COOLDOWN"){
+      await report("CATEGORIA_EM_ESPERA",topic+" ja teve uma oferta recente");
+      return {status:"CATEGORIA_EM_ESPERA",topic,queued:0};
+    }
+    if(topicStatus?.status!=="OK")throw Error("VERIFICACAO_CATEGORIA_FALHOU");
     const url="https://lista.mercadolivre.com.br/"+encodeURIComponent(keyword).replace(/%20/g,"-");
     tab=(await chrome.tabs.create({url,active:false})).id;
     await waitTab(tab);await ensurePage(tab);
@@ -283,7 +319,7 @@ async function runOnce(){
       }
       const generated=await exec(tab,generateLink,product.source_url);
       if(generated?.status!=="LINK_GERADO"){skipped++;reasons.generator++;generatorFailure=generated?.status||"SEM_RESPOSTA";continue;}
-      const queued=await native({action:"queue",product,affiliate_url:generated.affiliate_url});
+      const queued=await native({action:"queue",product,topic,affiliate_url:generated.affiliate_url});
       if(queued?.status==="QUEUED_FOR_WORKER"){
         await report("FILA_CRIADA","Oferta validada entregue ao worker do Telegram");
         return {status:"FILA_CRIADA",queued:1,keyword,skipped,foregroundFallback};
@@ -338,7 +374,7 @@ async function diagnoseSearch(){
 async function resetAlarm(){
   await chrome.alarms.clear(ALARM);
   const data=await chrome.storage.local.get({enabled:false,generatorUrl:""});
-  if(data.enabled&&data.generatorUrl)await chrome.alarms.create(ALARM,{delayInMinutes:360,periodInMinutes:360});
+  if(data.enabled&&data.generatorUrl)await chrome.alarms.create(ALARM,{delayInMinutes:5,periodInMinutes:5});
 }
 chrome.runtime.onInstalled.addListener(async()=>{
   await chrome.storage.local.set({enabled:false,lastStatus:"DESATIVADO"});
