@@ -1,0 +1,153 @@
+"""Native Messaging bridge: Chrome extension -> local bot, no HTTP listener.
+
+Only an explicitly installed extension ID is allowed by Chrome's native host
+manifest. No credential/cookie export, private API requests or login attempts.
+All untrusted browser observations are validated before the existing Telegram
+pipeline is permitted to queue a product.
+"""
+from __future__ import annotations
+
+import json
+import re
+import struct
+import sys
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from app.config import Settings
+from app.db import Database
+from app.mercadolivre_autopilot import (
+    MLError, _queue_validated_product, affiliate_from_text, normalize_product_url,
+)
+from app.services.collection import is_technology_offer
+
+MAX_MESSAGE = 48_000
+PRODUCT_ID = re.compile(r"MLB-?([0-9]{5,16})(?!\d)", re.I)
+
+
+def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[str, Any]:
+    if not settings.telegram_only_mode:
+        raise MLError("TELEGRAM_ONLY_NAO_CONFIGURADO")
+    if not settings.dry_run and not settings.telegram_real_enabled:
+        raise MLError("ENVIO_REAL_NAO_HABILITADO")
+    product = payload.get("product")
+    affiliate = payload.get("affiliate_url")
+    if not isinstance(product, dict) or not isinstance(affiliate, str):
+        raise MLError("PRODUTO_OU_LINK_AUSENTE")
+    source = product.get("source_url")
+    title = product.get("title")
+    price = product.get("price_cents")
+    if not isinstance(source, str) or normalize_product_url(source) != source:
+        raise MLError("URL_DO_PRODUTO_INVALIDA")
+    match = PRODUCT_ID.search(source)
+    if not match:
+        raise MLError("ID_DE_PRODUTO_INVALIDO")
+    external_id = "MLB" + match.group(1)
+    if not isinstance(title, str) or not 6 <= len(title) <= 250:
+        raise MLError("TITULO_INVALIDO")
+    if not is_technology_offer(
+        {"title": title, "category": "", "brand": ""},
+        terms=settings.technology_offer_terms,
+    ):
+        raise MLError("PRODUTO_FORA_DO_NICHO")
+    if type(price) is not int or not 100 <= price <= 50_000_000:
+        raise MLError("PRECO_INVALIDO")
+    if product.get("buy_now_enabled") is not True:
+        raise MLError("COMPRA_NAO_CONFIRMADA")
+    if affiliate_from_text(affiliate) != affiliate:
+        raise MLError("LINK_DE_AFILIADO_INVALIDO")
+    # Never accept the timestamp supplied by a webpage as evidence of
+    # freshness. The native host records local UTC time when the browser
+    # observations arrive, then the queue gate expires after 15 minutes.
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(hours=24)).isoformat(timespec="seconds")
+    rows = db.rows(
+        """SELECT 1 FROM offers o
+           WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
+             AND o.external_product_id=? AND EXISTS (
+                SELECT 1 FROM publications p
+                WHERE p.offer_id=o.id AND p.dry_run=0 AND p.published_at>=?
+           ) LIMIT 1""",
+        (external_id, since),
+    )
+    if rows:
+        return {"status": "ALREADY_PUBLISHED", "queued": 0}
+    existing = db.rows(
+        """SELECT 1 FROM offers o
+           WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
+             AND o.external_product_id=? AND EXISTS (
+                SELECT 1 FROM content_jobs j
+                WHERE j.offer_id=o.id AND j.dry_run=? AND j.status IN ('PENDING','PROCESSING')
+           ) LIMIT 1""",
+        (external_id, int(settings.dry_run)),
+    )
+    if existing:
+        return {"status": "ALREADY_QUEUED", "queued": 0}
+    details = {
+        "external_id": external_id,
+        "source_url": source,
+        "title": title,
+        "price_cents": price,
+        "stock_status": "IN_STOCK",
+        "confirmed_at": now.isoformat(timespec="seconds"),
+    }
+    result = _queue_validated_product(db, settings, details, affiliate)
+    return {
+        "status": result["status"],
+        "queued": len(result["offer_ids"]),
+        "published_now": 0,
+    }
+
+
+def process(message: object, *, settings: Settings | None = None, db: Database | None = None) -> dict[str, Any]:
+    if not isinstance(message, dict):
+        return {"status": "BLOCKED", "reason": "MENSAGEM_INVALIDA"}
+    action = message.get("action")
+    if action == "ping":
+        return {"status": "OK", "bridge": "ML_CHROME", "version": 1}
+    if action != "queue":
+        return {"status": "BLOCKED", "reason": "ACAO_NAO_PERMITIDA"}
+    try:
+        settings = settings or Settings.from_env()
+        db = db or Database(settings.database_path)
+        db.init()
+        return _queue(message, settings, db)
+    except (MLError, ValueError, KeyError, TypeError):
+        return {"status": "BLOCKED", "reason": "OFERTA_INVALIDA_OU_NAO_PERMITIDA"}
+    except Exception:
+        # Deliberately never expose stack traces, environment variables,
+        # tokens or SQLite path to the browser extension.
+        return {"status": "BLOCKED", "reason": "FALHA_LOCAL_CONSULTE_LOGS"}
+
+
+def _read_frame(stream) -> object:
+    header = stream.read(4)
+    if len(header) != 4:
+        raise ValueError("sem frame")
+    length = struct.unpack("=I", header)[0]
+    if not 0 < length <= MAX_MESSAGE:
+        raise ValueError("tamanho nao permitido")
+    blob = stream.read(length)
+    if len(blob) != length:
+        raise ValueError("frame incompleto")
+    return json.loads(blob.decode("utf-8"))
+
+
+def _write_frame(stream, reply: dict[str, Any]) -> None:
+    blob = json.dumps(reply, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    stream.write(struct.pack("=I", len(blob)))
+    stream.write(blob)
+    stream.flush()
+
+
+def main() -> None:
+    try:
+        request = _read_frame(sys.stdin.buffer)
+        answer = process(request)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        answer = {"status": "BLOCKED", "reason": "FRAME_INVALIDO"}
+    _write_frame(sys.stdout.buffer, answer)
+
+
+if __name__ == "__main__":
+    main()
