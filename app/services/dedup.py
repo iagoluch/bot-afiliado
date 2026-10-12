@@ -15,6 +15,7 @@ def is_in_cooldown(
     product_hours: int = 24,
     category_minutes: int = 30,
     campaign_hours: int = 24,
+    check_category: bool = True,
 ) -> bool:
     now = datetime.now(timezone.utc)
     product_cutoff = (now - timedelta(hours=product_hours)).isoformat(timespec="seconds")
@@ -34,7 +35,7 @@ def is_in_cooldown(
         ):
             return True
     category = str(offer["category"] or "").strip()
-    if category:
+    if category and check_category:
         category_cutoff = (now - timedelta(minutes=category_minutes)).isoformat(timespec="seconds")
         if db.rows(
             "SELECT 1 FROM publications p JOIN offers o ON o.id=p.offer_id WHERE p.channel=? AND p.dry_run=0 AND o.category=? COLLATE NOCASE AND p.published_at>=? LIMIT 1",
