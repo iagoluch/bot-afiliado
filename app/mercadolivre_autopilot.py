@@ -246,7 +246,27 @@ def _generate_affiliate_link(page, generator_url: str, source_url: str) -> str |
                 hrefs.append(loc.nth(i).input_value())
             except Exception:
                 pass
-    return affiliate_from_text("\n".join(hrefs))
+    short = affiliate_from_text("\n".join(hrefs))
+    if short:
+        return short
+    # Some portal versions show the URL as plain text, not a clickable anchor.
+    try:
+        short = affiliate_from_text(page.locator("body").inner_text(timeout=2000))
+        if short:
+            return short
+    except Exception:
+        pass
+    # If the portal exposes only a Copy button, read the generated URL after
+    # that explicit button action. Never read/export browser session cookies.
+    try:
+        copy_buttons = page.get_by_role("button", name=re.compile(r"^Copiar(?: link)?$", re.I))
+        if copy_buttons.count() == 1:
+            page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://www.mercadolivre.com.br")
+            copy_buttons.first.click(timeout=2000)
+            return affiliate_from_text(str(page.evaluate("() => navigator.clipboard.readText()")))
+    except Exception:
+        pass
+    return None
 
 
 def _should_queue(settings: Settings) -> bool:
