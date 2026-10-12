@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}body{font:14px system-ui,sans-serif;width:340px;padding:14px;margin:0;background:#111827;color:#f9fafb}
+h1{font-size:17px;margin:0 0 8px}.muted{color:#b3bfce;font-size:12px;line-height:1.5}
+button{width:100%;padding:11px;margin:6px 0;background:#2563eb;border:0;border-radius:7px;color:white;font-weight:600;cursor:pointer}
+button.secondary{background:#374151}button:disabled{opacity:.5;cursor:not-allowed}
+label{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px}
+#status{background:#1f2937;padding:10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;margin:12px 0;line-height:1.6}
+a{color:#93c5fd}
+</style>
+</head>
+<body>
+<h1>IAgo Tech — Mercado Livre</h1>
+<div class="muted">Usa sua sessão do Chrome. Não lê cookies, senhas nem faz login automaticamente.</div>
+<div id="status">Consultando a integração local...</div>
+<button id="register" class="secondary">Registrar esta aba como Gerador</button>
+<button id="once">Executar 1 busca e gerar link</button>
+<label><input type="checkbox" id="enabled"> Buscar a cada 6 horas (Chrome aberto)</label>
+<div class="muted">Ative o agendamento somente depois de confirmar o primeiro produto no Telegram. O botão de teste pode gerar uma publicação real se o worker estiver em modo real.</div>
+<script src="popup.js"></script>
+</body>
+</html>
