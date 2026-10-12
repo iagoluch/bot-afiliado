@@ -330,6 +330,12 @@ async function runOnce(){
       for(let attempt=0;attempt<6;attempt++){
         product=await exec(tab,productDetails);
         if(product?.status==="VALIDATED")break;
+        // Chromium sometimes defers rendering the buy-box in an inactive
+        // tab. Retry once in the foreground before rejecting an item.
+        if(attempt===2&&!foregroundFallback){
+          await chrome.tabs.update(tab,{active:true});
+          foregroundFallback=true;
+        }
         if(attempt<5)await new Promise(resolve=>setTimeout(resolve,850));
       }
       if(product?.status!=="VALIDATED"||!productUrl(product.source_url)){
