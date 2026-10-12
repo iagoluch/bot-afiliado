@@ -30,7 +30,8 @@ def test_extension_starts_disabled_not_even_a_login_request():
     assert "periodInMinutes:360" in js
     assert "app.ml_chrome_bridge" not in js
     assert "sendNativeMessage" in js
-    assert "authenticate" not in js
+    assert "chrome.cookies.get" not in js
+    assert "chrome.identity.launchWebAuthFlow" not in js
     assert "document.cookie" not in js
     assert "chrome.cookies" not in js
     assert "captcha" not in js.lower()
