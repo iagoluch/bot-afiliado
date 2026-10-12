@@ -20,8 +20,8 @@ a{color:#93c5fd}
 <button id="register" class="secondary">Registrar esta aba como Gerador</button>
 <button id="once">Executar 1 busca e gerar link</button>
 <button id="diagnose" class="secondary">Diagnosticar página de busca (sem publicar)</button>
-<label><input type="checkbox" id="enabled"> Buscar a cada 6 horas (Chrome aberto)</label>
-<div class="muted">Ative o agendamento somente depois de confirmar o primeiro produto no Telegram. O botão de teste pode gerar uma publicação real se o worker estiver em modo real.</div>
+<label><input type="checkbox" id="enabled"> Buscar até 1 oferta a cada 5 minutos (Chrome aberto)</label>
+<div class="muted">Uma categoria diferente por tentativa; limite 12/h requer TELEGRAM_MAX_POSTS_PER_HOUR=12 no .env. Ative só após validar os preços. O botão de teste pode gerar uma publicação real se o worker estiver em modo real.</div>
 <script src="popup.js"></script>
 </body>
 </html>
