@@ -19,7 +19,9 @@ _ALLOWED_HOOK = re.compile(r"^[^\r\n<>#{}\[\]\x60|]{10,95}$")
 _FORBIDDEN = re.compile(
     r"https?://|www\.|r\$\s*|%|\b(?:off|desconto|cupom|frete|gr[aá]tis|"
     r"garantia|original|estoque|[uú]ltimas unidades|menor pre[cç]o|"
-    r"corra|acaba hoje|promo[cç][aã]o rel[aâ]mpago)\b|\d",
+    r"corra|acaba hoje|promo[cç][aã]o rel[aâ]mpago|compat[ií]vel|"
+    r"funciona com|garantid[ao]|r[aá]pid[ao]|potente|dur[aá]vel|qualidade|"
+    r"certificad[ao]|testad[ao])\b|\d",
     re.I,
 )
 
