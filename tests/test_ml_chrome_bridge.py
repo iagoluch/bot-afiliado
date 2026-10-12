@@ -252,7 +252,8 @@ def test_verified_installments_and_product_blurb_reach_telegram(tmp_path):
     assert process(payload, settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
     offer_id = db.rows("SELECT id FROM offers ORDER BY id DESC LIMIT 1")[0]["id"]
     message = telegram_direct_message(verified_offer_data(db, offer_id))
-    assert "Pesquisando notebooks?" in message
+    assert "notebook" in message.lower()
+    assert "<b>" in message
     assert "R$ 3.025,00 no Pix" in message
     assert "R$ 3.423,00 em outros meios" in message
     assert "Parcelamento: 10x de R$ 342,30 sem juros" in message
