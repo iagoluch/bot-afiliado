@@ -187,8 +187,8 @@ def _validate_product_page(page, settings: Settings, candidate: dict) -> dict | 
     source = normalize_product_url(page.url)
     if not source:
         return None
-    ref = re.search(r"MLB[0-9]{5,16}", source, re.I)
-    item_id = ref.group(0).upper() if ref else None
+    ref = re.search(r"MLB-?([0-9]{5,16})", source, re.I)
+    item_id = f"MLB{ref.group(1)}" if ref else None
     if not item_id:
         return None
     return {
@@ -329,13 +329,13 @@ def run_once(settings: Settings, generator_url: str, *, keyword: str | None = No
                 if collected >= 1:
                     break
                 # Never repeat an offer already published within 24h.
-                item_match = re.search(r"MLB[0-9]{5,16}", candidate["url"], re.I)
+                item_match = re.search(r"MLB-?([0-9]{5,16})", candidate["url"], re.I)
                 if item_match:
                     already = db.rows(
                         """SELECT 1 FROM publications p JOIN offers o ON p.offer_id=o.id
                         WHERE o.external_product_id=? AND p.channel='telegram'
                         AND p.dry_run=0 AND p.published_at>=? LIMIT 1""",
-                        (item_match.group(0).upper(), (datetime.now(timezone.utc)-timedelta(hours=24)).isoformat()),
+                        ("MLB"+item_match.group(1), (datetime.now(timezone.utc)-timedelta(hours=24)).isoformat()),
                     )
                     if already:
                         skipped += 1
