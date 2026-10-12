@@ -38,7 +38,7 @@ def test_extracts_one_real_official_affiliate_link_not_plain_product():
     assert affiliate_from_text("https://meli.la/AAA\nhttps://meli.la/BBB") is None
     assert affiliate_from_text("https://www.mercadolivre.com.br/p/MLB24117280") is None
     assert affiliate_from_text("https://meli.la.evil.test/AAA") is None
-    assert affiliate_from_text("https://evil.test/?x=https://meli.la/AAA") is None or True  # verified below with strict test
+    assert affiliate_from_text("https://evil.test/?x=https://meli.la/AAA") is None
 
 
 @pytest.mark.parametrize("text,expected", [
