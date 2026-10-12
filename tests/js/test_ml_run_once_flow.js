@@ -20,7 +20,7 @@ async function simulate({emptyInBackground=false,productAvailable=true,linkGener
     generateLink(){}
   };
   const context={
-    busy:false, WORDS:["fone bluetooth"],
+    busy:false, WORDS:["fone bluetooth"], TOPIC_BY_QUERY:{"fone bluetooth":"audio"},
     setTimeout:fn=>fn(), // keeps fixture fast; bounded retry behavior still executes
     chrome:{
       storage:{local:{
@@ -36,8 +36,10 @@ async function simulate({emptyInBackground=false,productAvailable=true,linkGener
     official:()=>true,
     native:async msg=>{
       if(msg.action==="ping")return {status:"OK"};
+      if(msg.action==="topicStatus"){assert.equal(msg.topic,"audio");return {status:"OK"};}
       state.queueCalls++;
       assert.equal(msg.action,"queue");
+      assert.equal(msg.topic,"audio");
       assert.equal(msg.affiliate_url,"https://meli.la/2MWiFPG");
       assert.equal(msg.product.price_cents,7490);
       return {status:"QUEUED_FOR_WORKER"};
