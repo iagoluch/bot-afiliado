@@ -1,0 +1,12 @@
+[Unit]
+Description=Bot Afiliado ML - descobertas a cada seis horas
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:25:00
+RandomizedDelaySec=7m
+AccuracySec=1m
+Persistent=true
+Unit=bot-afiliado-ml-autopilot.service
+
+[Install]
+WantedBy=timers.target
