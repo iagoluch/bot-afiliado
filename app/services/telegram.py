@@ -89,11 +89,20 @@ class TelegramClient:
         self._sleep = sleep
         self._last_attempt_at: float | None = None
 
+    @staticmethod
+    def _is_tech_drops_html(text: str) -> bool:
+        # Support both disclosure placements so old formatted messages
+        # keep their bold styling if sent through this client.
+        return (
+            text.startswith("#publi\n\n<b>")
+            or (text.startswith("<b>") and text.endswith("\n#publi"))
+        )
+
     def _message_params(self, text: str) -> dict[str, str]:
         # Only the escaped Tech Drops template opts into Telegram HTML.
         # All older plain-text publications keep their original API contract.
         params = {"text": text}
-        if text.startswith("#publi\n\n<b>"):
+        if self._is_tech_drops_html(text):
             params["parse_mode"] = "HTML"
         return params
 
@@ -113,7 +122,7 @@ class TelegramClient:
             return self.send_message(text)
         try:
             params = {"photo": photo_url, "caption": text}
-            if text.startswith("#publi\n\n<b>"):
+            if self._is_tech_drops_html(text):
                 params["parse_mode"] = "HTML"
             return self._send("sendPhoto", params)
         except TelegramMediaRejected:
