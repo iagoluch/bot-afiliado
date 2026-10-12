@@ -182,7 +182,9 @@ function extractVisibleProductPrice(){
   if(values.length===2&&!pixMention)return {status:"AMBIGUOUS_PAYMENT_PRICES"};
   // Validate text in the buy box. If there is a cheaper advertised value
   // not captured by the trusted price elements, do not invent its context.
-  const textAmounts=[...context.matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
+  const mainPriceLines=context.split(/[\r\n]+/).filter(line=>
+    !/\b\d+\s*x\b|parcelas?|sem juros|ao m[eê]s|por m[eê]s/i.test(line));
+  const textAmounts=[...mainPriceLines.join("\n").matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
     .map(m=>{
       const [whole,cents]=m[1].replace(/\./g,"").split(",");
       return Number(whole)*100+Number(cents);
