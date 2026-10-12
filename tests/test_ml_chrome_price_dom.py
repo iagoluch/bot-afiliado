@@ -30,3 +30,23 @@ def test_product_details_uses_disambiguated_price_not_first_element():
     assert "VISIBLE_DOM_PRICE_V2" in code
     assert "AMBIGUOUS_PAYMENT_PRICES" in code
     assert "andes-money-amount--previous" in code
+
+
+def test_product_buybox_validation_with_cart_button_and_installments():
+    if shutil.which("node") is None:
+        pytest.skip("Node unavailable")
+    result=subprocess.run(
+        ["node",str(ROOT/"tests/js/test_ml_buybox_dom.js")],
+        cwd=ROOT,capture_output=True,text=True,timeout=15,
+    )
+    assert result.returncode==0,result.stderr
+    assert "ML buy-box product validation cases OK" in result.stdout
+
+
+def test_actual_chrome_product_error_codes_are_visible():
+    code=EXT.read_text(encoding="utf-8")
+    assert 'status:"PURCHASE_CONTROL_MISSING"' in code
+    assert 'status:"PRODUCT_TITLE_MISSING"' in code
+    assert "productFailures" in code
+    assert "for(const item of cards.slice(0,10))" in code
+    assert 'status:"VALIDATED"' in code
