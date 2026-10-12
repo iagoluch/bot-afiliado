@@ -96,12 +96,13 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
 
     # Telegram uses HTML parse_mode for this template. Escape all strings
     # derived from the product page or seller; never trust seller markup.
+    # Put the creative hook first for Telegram push notification previews.
+    # Keep the advertising disclosure visible at the very end of the post.
     lines = [
-        "#publi", "",
         f"<b>{escape(heading)}</b>",
-        f"<b>{escape(clean_title(raw_title))}</b>",
-        "",
         escape(phrase),
+        "",
+        f"<b>{escape(clean_title(raw_title))}</b>",
         "",
     ]
     if discount:
@@ -132,6 +133,11 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     ):
         suffix = " sem juros" if interest_free else " com juros" if with_interest else ""
         lines.append(f"💳 Parcelamento: {count}x de {brl(amount)}{suffix}")
+    else:
+        # A verified amount was not visible on the product page.
+        # Keep the card purchase cue without promising that credit or
+        # installments are available for this product/account.
+        lines.append("💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio.")
 
     if discount:
         lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
@@ -139,7 +145,7 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
         lines.append(f"🎟 Cupom: {escape(str(offer['coupon']).strip()[:80])}")
     if offer.get("shipping"):
         lines.append(f"📦 {escape(str(offer['shipping']).strip()[:120])}")
-    lines.extend(["", f"🏬 {escape(merchant)}", "", "🛒 Confira no Mercado Livre:", escape(url)])
+    lines.extend(["", f"🏬 {escape(merchant)}", "", "🛒 Confira no Mercado Livre:", escape(url), "", "#publi"])
     return "\n".join(lines)
 
 
