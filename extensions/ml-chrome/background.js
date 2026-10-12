@@ -224,9 +224,9 @@ function productDetails(){
   if(!purchase)return {status:"PURCHASE_CONTROL_MISSING"};
   const price=extractVisibleProductPrice();
   if(price.status!=="VERIFIED")return {status:price.status};
-  return {status:"VALIDATED",title:title.slice(0,250),
+  return {...price,status:"VALIDATED",title:title.slice(0,250),
     source_url:location.origin+location.pathname.replace(/\/$/,""),
-    ...price,buy_now_enabled:true};
+    buy_now_enabled:true};
 }
 function isGenerator(){
   return !!document.querySelector("textarea") &&
