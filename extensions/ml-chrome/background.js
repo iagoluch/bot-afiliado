@@ -44,9 +44,52 @@ async function exec(id,func,...args){
   return (await chrome.scripting.executeScript({target:{tabId:id},func,args}))[0]?.result;
 }
 function searchCards(){
-  const anchors=[...document.querySelectorAll("a.poly-component__title, a.ui-search-item__group__element, a.poly-card__title, a.ui-search-link")];
-  return anchors.slice(0,60).map(a=>({title:(a.textContent||"").trim().replace(/\s+/g," "),url:a.href}))
-    .filter(x=>x.title.length>=6&&x.url).slice(0,20);
+  // Search layouts have changed across Mercado Livre versions. Resolve
+  // product links inside cards rather than relying on one title class.
+  const cards=[...document.querySelectorAll(
+    "li.ui-search-layout__item, .andes-card.poly-card, div.poly-card, article.poly-card")];
+  const productPath=/(?:\/p\/MLB\d{5,16}(?:\/|$))|(?:MLB-\d{5,16}(?:\/|$|[-_]))/i;
+  const seen=new Set(), results=[];
+  let productLinkCount=0;
+  const append=(anchor,card)=>{
+    if(!anchor || !anchor.href)return;
+    let parsed;
+    try{parsed=new URL(anchor.href);}
+    catch(_e){return;}
+    if(parsed.protocol!=="https:" ||
+      !["www.mercadolivre.com.br","mercadolivre.com.br","produto.mercadolivre.com.br"].includes(parsed.hostname) ||
+      !productPath.test(parsed.pathname))return;
+    productLinkCount++;
+    const textFromAnchor=(anchor.textContent||"").trim().replace(/\s+/g," ");
+    const titleFromCard=(card?.querySelector(
+      "h2.poly-component__title-wrapper, h2, h3, a.poly-component__title")?.textContent||"").trim().replace(/\s+/g," ");
+    const title=(textFromAnchor.length>=6 ? textFromAnchor : titleFromCard);
+    const url=parsed.origin+parsed.pathname.replace(/\/$/,"");
+    if(title.length<6||seen.has(url))return;
+    seen.add(url);
+    results.push({title:title.slice(0,250),url});
+  };
+  for(const card of cards.slice(0,80)){
+    const links=[...card.querySelectorAll(
+      "a.poly-component__title, a.ui-search-item__group__element, a.poly-card__title, a[href]")];
+    for(const anchor of links.slice(0,35))append(anchor,card);
+  }
+  // Alternative layouts may have linked titles outside the known cards.
+  if(results.length===0){
+    for(const anchor of [...document.querySelectorAll("a[href]")].slice(0,300)){
+      append(anchor,anchor.closest("article, li, .poly-card, .ui-search-layout__item"));
+    }
+  }
+  return {
+    cards:results.slice(0,20),
+    diagnostics:{
+      layoutCards:cards.length,
+      anchors:document.querySelectorAll("a[href]").length,
+      productLinks:productLinkCount,
+      results:results.length,
+      readyState:document.readyState
+    }
+  };
 }
 function productDetails(){
   const title=(document.querySelector("h1.ui-pdp-title, h1.poly-component__title")?.textContent||"").trim();
@@ -110,28 +153,47 @@ async function runOnce(){
     const url="https://lista.mercadolivre.com.br/"+encodeURIComponent(keyword).replace(/%20/g,"-");
     tab=(await chrome.tabs.create({url,active:false})).id;
     await waitTab(tab);await ensurePage(tab);
-    const cards=(await exec(tab,searchCards))||[];
+    let search={cards:[],diagnostics:{}};
+    // A completed navigation does not mean that the asynchronous product
+    // grid has finished rendering. Wait for visible product links, bounded.
+    for(let attempt=0;attempt<9;attempt++){
+      search=(await exec(tab,searchCards))||search;
+      if(search.cards?.length)break;
+      if(attempt<8)await new Promise(resolve=>setTimeout(resolve,1200));
+    }
+    const cards=search.cards||[];
+    const searchDiag=search.diagnostics||{};
+    if(cards.length===0){
+      const reason=searchDiag.anchors===0?"BUSCA_SEM_CONTEUDO":
+        searchDiag.productLinks===0?"BUSCA_SEM_LINKS_DE_PRODUTO":
+        "BUSCA_SEM_TITULOS_DE_PRODUTO";
+      await report(reason,"cards="+(searchDiag.layoutCards||0)+
+        " | links="+(searchDiag.anchors||0)+" | produtos="+(searchDiag.productLinks||0));
+      return {status:reason,queued:0,keyword,diagnostics:searchDiag};
+    }
     let skipped=0;
-    const seen=new Set();
+    const reasons={url:0,product:0,generator:0,bridge:0};
+
     for(const item of cards.slice(0,6)){
       const source=productUrl(item.url);
-      if(!source||seen.has(source)){skipped++;continue;}
+      if(!source||seen.has(source)){skipped++;reasons.url++;continue;}
       seen.add(source);
       await navigate(tab,source);
       const product=await exec(tab,productDetails);
-      if(!product||!productUrl(product.source_url)){skipped++;continue;}
+      if(!product||!productUrl(product.source_url)){skipped++;reasons.product++;continue;}
       await navigate(tab,cfg.generatorUrl);
       const generated=await exec(tab,generateLink,product.source_url);
-      if(generated?.status!=="LINK_GERADO"){skipped++;continue;}
+      if(generated?.status!=="LINK_GERADO"){skipped++;reasons.generator++;continue;}
       const queued=await native({action:"queue",product,affiliate_url:generated.affiliate_url});
       if(queued?.status==="QUEUED_FOR_WORKER"){
         await report("FILA_CRIADA","Oferta validada entregue ao worker do Telegram");
         return {status:"FILA_CRIADA",queued:1,keyword,skipped};
       }
-      skipped++;
+      skipped++;reasons.bridge++;
     }
-    await report("SEM_OFERTA_APROVADA",String(skipped)+" produtos rejeitados");
-    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,skipped};
+    await report("SEM_OFERTA_APROVADA","encontrados="+cards.length+" | analisados="+skipped+
+      " | produto="+reasons.product+" | gerador="+reasons.generator+" | ponte="+reasons.bridge);
+    return {status:"SEM_OFERTA_APROVADA",queued:0,keyword,found:cards.length,skipped,reasons};
   }catch(error){
     const reason=(error?.message||"ERRO_DESCONHECIDO").slice(0,120);
     await report("PARADO",reason);
