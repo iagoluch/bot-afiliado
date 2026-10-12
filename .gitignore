@@ -8,3 +8,5 @@ data/*.db-*
 data/*.lock
 data/creatives/
 logs/
+data/mercadolivre_oauth_*.json
+data/.ml-oauth-*.tmp

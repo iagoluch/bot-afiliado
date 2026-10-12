@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>Autorização Mercado Livre — Bot Afiliado</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+    body{background:#0b1220;color:#eef3ff;min-height:100vh;display:grid;place-items:center;margin:0;padding:1.25rem;box-sizing:border-box}
+    main{max-width:520px;width:100%;background:#141e30;border:1px solid #2b405d;border-radius:20px;padding:2rem;box-sizing:border-box}
+    h1{font-size:1.45rem;line-height:1.3;margin:0 0 1rem}
+    p{line-height:1.55;color:#b9c7dd}
+    strong{color:#f9fbff}
+    button{background:#27b4b0;color:#001b23;padding:.8rem 1.1rem;border:0;border-radius:9px;font-weight:700;cursor:pointer;margin:.4rem .5rem .4rem 0}
+    button:focus-visible{outline:3px solid #f1cc59}
+    .secondary{background:#34445d;color:white}
+    .code{width:100%;margin:1rem 0;padding:.75rem;background:#0b1220;color:white;border:1px solid #41536c;border-radius:8px;box-sizing:border-box}
+    .hint{font-size:.88rem} [hidden]{display:none!important}
+  </style>
+  <script>
+    (function () {
+      "use strict";
+      // Read in memory once; never persist authorization codes in browser storage.
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code") || "";
+      const state = params.get("state") || "";
+      const error = params.get("error") || "";
+      // Immediately remove code/state from visible URL and browser history entry.
+      window.history.replaceState(null, "", window.location.pathname);
+      window.addEventListener("DOMContentLoaded", function () {
+        const info = document.getElementById("status");
+        const actions = document.getElementById("actions");
+        const fallback = document.getElementById("fallback");
+        if (error) {
+          info.textContent = "O Mercado Livre não autorizou esta solicitação. Volte ao Acer e inicie um novo login.";
+          return;
+        }
+        if (!code || !state || code.length > 2048 || state.length > 512) {
+          info.textContent = "Página de retorno pronta. Para autorizar, inicie o comando de login no Acer e abra o endereço fornecido por ele.";
+          return;
+        }
+        info.textContent = "Autorização recebida. Copie o código e o state para concluir no terminal do Acer. Eles são temporários.";
+        actions.hidden = false;
+        async function copy(value) {
+          try {
+            await navigator.clipboard.writeText(value);
+            document.getElementById("notice").textContent = "Copiado. Cole somente no terminal do Acer.";
+          } catch (_) {
+            fallback.hidden = false;
+            fallback.value = value;
+            fallback.focus();
+            fallback.select();
+            document.getElementById("notice").textContent = "Cópia automática indisponível. Copie o texto selecionado manualmente.";
+          }
+        }
+        document.getElementById("copy-code").addEventListener("click", function () { copy(code); });
+        document.getElementById("copy-state").addEventListener("click", function () { copy(state); });
+      });
+    }());
+  </script>
+</head>
+<body>
+  <main>
+    <h1>Bot Afiliado · Autorização Mercado Livre</h1>
+    <p id="status" role="status">Carregando resultado da autorização…</p>
+    <section id="actions" hidden>
+      <button type="button" id="copy-code">Copiar código de autorização</button>
+      <button type="button" id="copy-state" class="secondary">Copiar state</button>
+      <p id="notice" role="status" class="hint"></p>
+      <textarea id="fallback" class="code" rows="3" readonly hidden aria-label="Texto a copiar manualmente"></textarea>
+      <p><strong>Próximo passo:</strong> no Acer, execute o comando de conclusão OAuth. Nunca cole seu código, Client Secret ou tokens em chats ou no GitHub.</p>
+    </section>
+    <p class="hint">Esta página não envia dados para nenhum serviço, não usa cookies, não armazena o código e não solicita sua senha.</p>
+  </main>
+</body>
+</html>
