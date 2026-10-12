@@ -89,12 +89,20 @@ class TelegramClient:
         self._sleep = sleep
         self._last_attempt_at: float | None = None
 
+    def _message_params(self, text: str) -> dict[str, str]:
+        # Only the escaped Tech Drops template opts into Telegram HTML.
+        # All older plain-text publications keep their original API contract.
+        params = {"text": text}
+        if text.startswith("#publi\n\n<b>"):
+            params["parse_mode"] = "HTML"
+        return params
+
     def send_message(self, text: str) -> TelegramResult:
         if not 1 <= len(text) <= MAX_MESSAGE_CHARS:
             raise TelegramAPIError(
                 f"mensagem Telegram deve ter entre 1 e {MAX_MESSAGE_CHARS} caracteres"
             )
-        return self._send("sendMessage", {"text": text})
+        return self._send("sendMessage", self._message_params(text))
 
     def send_photo(self, text: str, photo_url: str) -> TelegramResult:
         """Single Telegram message with original photo; fallback only on definite rejection.
@@ -104,7 +112,10 @@ class TelegramClient:
         if not photo_url.startswith("https://") or len(text) > MAX_MEDIA_CAPTION_CHARS:
             return self.send_message(text)
         try:
-            return self._send("sendPhoto", {"photo": photo_url, "caption": text})
+            params = {"photo": photo_url, "caption": text}
+            if text.startswith("#publi\n\n<b>"):
+                params["parse_mode"] = "HTML"
+            return self._send("sendPhoto", params)
         except TelegramMediaRejected:
             return self.send_message(text)
 
