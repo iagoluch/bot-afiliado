@@ -13,6 +13,7 @@ from app.config import Settings, validate_public_base_url
 from app.db import Database
 from app.models import Offer, utc_now
 from app.services.compliance import ComplianceError, merchant_key, validate_content, validate_distribution, validate_offer
+from app.services.collection import is_technology_offer
 from app.services.content import telegram_creative_id, telegram_message, telegram_tracking_url, telegram_direct_message, telegram_product_photo
 from app.services.curation import score_offer, verified_offer_data
 from app.services.dedup import is_in_cooldown
@@ -140,6 +141,10 @@ class Pipeline:
             if row is None:
                 continue
             offer = verified_offer_data(self.db, offer_id, row)
+            if self.settings.telegram_only_mode and not is_technology_offer(
+                offer, terms=self.settings.technology_offer_terms,
+            ):
+                continue
             if classification not in {"GOOD", "EXCELLENT"} and not self._manually_reviewed_telegram_eligible(offer):
                 continue
             validate_offer(offer)
@@ -195,6 +200,10 @@ class Pipeline:
 
         offer = verified_offer_data(self.db, queue["offer_id"])
         try:
+            if self.settings.telegram_only_mode and not is_technology_offer(
+                offer, terms=self.settings.technology_offer_terms,
+            ):
+                raise ComplianceError("produto fora do nicho tecnologia")
             validate_offer(offer)
             validate_distribution(offer, queue["channel"], self.settings)
             if self.settings.telegram_only_mode:
