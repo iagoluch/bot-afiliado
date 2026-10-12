@@ -1,5 +1,7 @@
 # BOT AFILIADO — serviço local
 
+**Mercado Livre Developers:** [configurar a URL GitHub Pages e fazer login OAuth local no Acer](docs/MERCADOLIVRE_OAUTH_GITHUB_PAGES.md). A autenticação de APIs gerais não concede, por si só, coleta afiliada nem geração de links com comissão.
+
 **NOVO: [Modo Telegram-only e lançamento no Acer](docs/TELEGRAM_ONLY_LANCAMENTO.md).** O envio direto de links oficiais, foto de produto e worker SQLite ficam disponíveis atrás de confirmação explícita. O website, Instagram e FFmpeg não são necessários neste modo. A coleta por API ainda depende de contratos e credenciais oficiais; não está implementada/homologada.
 
 
