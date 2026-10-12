@@ -125,6 +125,31 @@ class Pipeline:
         except (ValueError, KeyError, TypeError, OverflowError):
             return False
 
+    def _ml_browser_verified_eligible(self, offer: dict) -> bool:
+        """Autoriza curadoria apenas de produto confirmado via UI, com validade curta."""
+        if not self.settings.telegram_only_mode:
+            return False
+        if offer.get("merchant") != "Mercado Livre" or offer.get("source_type") != "ML_BROWSER_VERIFIED":
+            return False
+        metadata = offer.get("tracking_metadata")
+        if not isinstance(metadata, dict) or metadata.get("browser_verified") is not True or metadata.get("affiliate_ui_generated") is not True:
+            return False
+        if offer.get("stock_status") != "IN_STOCK":
+            return False
+        try:
+            from app.mercadolivre_autopilot import affiliate_from_text, normalize_product_url
+            if affiliate_from_text(str(offer.get("affiliate_url") or "")) != offer.get("affiliate_url"):
+                return False
+            if normalize_product_url(str(offer.get("source_url") or "")) != offer.get("source_url"):
+                return False
+            timestamp = datetime.fromisoformat(str(offer["collected_at"]).replace("Z", "+00:00"))
+            expiry = datetime.fromisoformat(str(offer["expires_at"]).replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            age = (now - timestamp.astimezone(timezone.utc)).total_seconds()
+            return 0 <= age <= 15 * 60 and expiry.astimezone(timezone.utc) > now
+        except (ValueError, KeyError, TypeError, OverflowError):
+            return False
+
     def curate_and_queue(self, offer_ids: list[int], campaign_id: str = "organic") -> list[int]:
         queue_ids: list[int] = []
         for offer_id in offer_ids:
@@ -149,7 +174,10 @@ class Pipeline:
                 offer, terms=self.settings.technology_offer_terms,
             ):
                 continue
-            if classification not in {"GOOD", "EXCELLENT"} and not self._manually_reviewed_telegram_eligible(offer):
+            if classification not in {"GOOD", "EXCELLENT"} and not (
+                self._manually_reviewed_telegram_eligible(offer)
+                or self._ml_browser_verified_eligible(offer)
+            ):
                 continue
             validate_offer(offer)
             try:
@@ -210,6 +238,8 @@ class Pipeline:
                 offer, terms=self.settings.technology_offer_terms,
             ):
                 raise ComplianceError("produto fora do nicho tecnologia")
+            if offer.get("source_type") == "ML_BROWSER_VERIFIED" and not self._ml_browser_verified_eligible(offer):
+                raise ComplianceError("validacao ML UI ausente ou expirada")
             validate_offer(offer)
             validate_distribution(offer, queue["channel"], self.settings)
             if self.settings.telegram_only_mode:
