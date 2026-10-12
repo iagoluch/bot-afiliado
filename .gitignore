@@ -10,3 +10,8 @@ data/creatives/
 logs/
 data/mercadolivre_oauth_*.json
 data/.ml-oauth-*.tmp
+
+# Sessao local do navegador ML (cookies/credenciais somente no Acer)
+data/ml_browser_profile/
+data/ml_autopilot_config.json
+data/ml_autopilot_config.tmp

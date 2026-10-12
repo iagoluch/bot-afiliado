@@ -1,0 +1,17 @@
+[Unit]
+Description=Bot Afiliado - publicador de mensagens Telegram
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/bot-afiliado
+ExecStart=%h/bot-afiliado/.venv/bin/python -m app.worker
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=180
+StartLimitBurst=4
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
