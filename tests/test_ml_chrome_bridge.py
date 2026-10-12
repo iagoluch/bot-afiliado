@@ -39,7 +39,7 @@ def record(**overrides):
         "buy_now_enabled": True,
     }
     p.update(overrides)
-    return {"action": "queue", "affiliate_url": "https://meli.la/2MWiFPG", "product": p}
+    return {"action": "queue", "affiliate_url": "https://meli.la/2MWiFPG", "topic": "audio", "product": p}
 
 
 def test_ping_without_environment_access():
@@ -68,7 +68,7 @@ def test_identical_pending_offer_not_enqueued_twice(tmp_path):
     db = Database(conf.database_path)
     assert process(record(), settings=conf, db=db)["queued"] == 1
     second = process(record(), settings=conf, db=db)
-    assert second == {"status": "ALREADY_QUEUED", "queued": 0}
+    assert second["status"] in {"ALREADY_QUEUED", "TOPIC_COOLDOWN"}
     assert db.rows("SELECT COUNT(*) n FROM content_jobs")[0]["n"] == 1
 
 
@@ -214,3 +214,23 @@ def test_standard_sale_price_without_pix_is_not_relabelled(tmp_path):
     assert "R$ 759,00" in message
     assert "no Pix" not in message
     assert "R$ 900,00" not in message
+
+
+
+def test_preflight_blocks_repeating_category_with_pending_job(tmp_path):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    assert process({"action": "topicStatus", "topic": "audio"}, settings=conf, db=db)["status"] == "OK"
+    assert process(record(), settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    assert process({"action": "topicStatus", "topic": "audio"}, settings=conf, db=db)["status"] == "TOPIC_COOLDOWN"
+    assert process({"action": "topicStatus", "topic": "ssd"}, settings=conf, db=db)["status"] == "OK"
+    assert process({"action": "topicStatus", "topic": "cartao"}, settings=conf, db=db)["status"] == "BLOCKED"
+
+
+def test_category_cooldown_rejects_second_different_product(tmp_path):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    assert process(record(), settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    variant = record(source_url="https://www.mercadolivre.com.br/p/MLB25117280")
+    assert process(variant, settings=conf, db=db)["status"] == "TOPIC_COOLDOWN"
+    assert db.rows("SELECT COUNT(*) n FROM content_jobs")[0]["n"] == 1
