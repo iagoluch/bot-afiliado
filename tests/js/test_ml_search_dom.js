@@ -23,6 +23,9 @@ function fake(anchorData, {hasKnownCard=true}={}){
   };
   const doc={
     readyState:"complete",
+    title:"Notebook | Mercado Livre",
+    body:{innerText:"Resultados. Mais relevantes"},
+    querySelector:()=>({textContent:"Notebooks disponíveis"}),
     querySelectorAll:(selector)=>{
       if(selector.includes("li.ui-search-layout__item"))return hasKnownCard?[card]:[];
       if(selector==="a[href]")return anchors;
@@ -33,7 +36,9 @@ function fake(anchorData, {hasKnownCard=true}={}){
 }
 function execute(doc){
   const code=file.slice(start,stop)+"\nsearchCards();";
-  return vm.runInNewContext(code,{document:doc,URL}, {timeout:2000});
+  return vm.runInNewContext(code,{document:doc,URL,location:{
+    hostname:"lista.mercadolivre.com.br",pathname:"/notebook"
+  }}, {timeout:2000});
 }
 const goodUrl="https://www.mercadolivre.com.br/ssd-nvme-hikvision/p/MLB24117280?tracking_id=abc";
 {
@@ -63,5 +68,16 @@ const goodUrl="https://www.mercadolivre.com.br/ssd-nvme-hikvision/p/MLB24117280?
   assert.equal(result.cards.length,0);
   assert.equal(result.diagnostics.layoutCards,1);
   assert.equal(result.diagnostics.anchors,0);
+}
+
+{
+  const result=execute(fake([{url:goodUrl,title:"SSD NVMe Hikvision 1TB"}]));
+  assert.equal(result.diagnostics.pageHost,"lista.mercadolivre.com.br");
+  assert.equal(result.diagnostics.pagePath,"/notebook");
+  assert.equal(result.diagnostics.pageTitle,"Notebook | Mercado Livre");
+  assert.equal(result.diagnostics.hasResultsText,true);
+  assert.equal(result.diagnostics.sampleLinks.length,1);
+  assert.equal(result.diagnostics.sampleLinks[0],
+    "www.mercadolivre.com.br/ssd-nvme-hikvision/p/MLB24117280");
 }
 process.stdout.write("searchCards DOM tests OK\n");

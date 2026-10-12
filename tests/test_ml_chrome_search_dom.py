@@ -30,3 +30,20 @@ def test_empty_search_reports_diagnostic_instead_of_zero_rejected():
     assert "await report(reason," in code
     assert 'if(generated?.status!=="LINK_GERADO")' in code
     assert "await native({action:" in code
+
+
+def test_visible_diagnostic_uses_no_native_queue_and_popup_exposes_report():
+    source=SOURCE.read_text(encoding="utf-8")
+    method=source.split("async function diagnoseSearch(){",1)[1].split("async function resetAlarm(){",1)[0]
+    assert "chrome.tabs.create({url,active:true})" in method
+    assert "searchCards" in method
+    assert "chrome.storage.local.set" in method
+    assert "native(" not in method
+    assert "generateLink" not in method
+    assert "runOnce" not in method
+    assert "tabs.remove" not in method
+    popup=(ROOT/"extensions/ml-chrome/popup.js").read_text(encoding="utf-8")
+    html=(ROOT/"extensions/ml-chrome/popup.html").read_text(encoding="utf-8")
+    assert 'id="diagnose"' in html
+    assert 'action:"diagnoseSearch"' in popup
+    assert "lastDiagnostics" in popup
