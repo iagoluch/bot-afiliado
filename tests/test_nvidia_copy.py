@@ -20,9 +20,9 @@ def test_calls_official_model_in_text_only_mode_without_product_price_or_link():
     requests = []
     hook = suggest_hook(
         "Mouse gamer sem fio", api_key="nv-test-secret",
-        opener=_opener("Uma opção para organizar seu setup.", seen=requests),
+        opener=_opener("Esse mouse merece entrar na sua lista de periféricos.", seen=requests),
     )
-    assert hook == "Uma opção para organizar seu setup."
+    assert hook == "Esse mouse merece entrar na sua lista de periféricos."
     request, timeout = requests[0]
     assert request.full_url == API_URL
     assert timeout <= 8
@@ -80,11 +80,11 @@ def test_rendering_is_stable_with_verified_hook(tmp_path):
             "price_evidence": "VISIBLE_DOM_PRICE_V2",
             "price_payment_method": "PIX",
             "other_payment_price_cents": 90000,
-            "copy_hook": "Uma opção para organizar seu setup.",
+            "copy_hook": "Esse mouse merece entrar na sua lista de periféricos.",
         },
     }
     text = telegram_direct_message(offer)
-    assert "Uma opção para organizar seu setup." in text
+    assert "Esse mouse merece entrar na sua lista de periféricos." in text
     assert "R$ 759,00 no Pix" in text
     assert "R$ 900,00 em outros meios" in text
     assert text.endswith("https://meli.la/2MWiFPG")
