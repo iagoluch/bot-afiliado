@@ -260,7 +260,6 @@ async function runOnce(){
     }
     let skipped=0;
     const reasons={url:0,product:0,generator:0,bridge:0};
-    const productPriceReasons={};
     const seen=new Set(); // evita ReferenceError ao encontrar o primeiro produto
     let generatorFailure="", bridgeFailure="";
 
