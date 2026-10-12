@@ -47,8 +47,28 @@ def test_category_copy_is_specific_and_not_generic(title, word):
     assert "Mais um produto para entrar na sua lista" not in text
     assert "Mais uma opção de tecnologia" not in text
     assert "PREÇO CAIU" not in text
-    assert text.endswith("https://meli.la/2MWiFPG")
+    assert text.endswith("https://meli.la/2MWiFPG\n\n#publi")
     assert text == telegram_direct_message(ml_offer(title))
+
+
+def test_notification_starts_with_creative_hook_and_disclosure_ends_post():
+    title = "Fone De Ouvido Headphone Dapon H02D Bluetooth 5.1 Over-ear 22h Preto"
+    message = telegram_direct_message(ml_offer(title))
+    lines = message.splitlines()
+    assert lines[0].startswith("<b>") and lines[0].endswith("</b>")
+    assert "FONE" in lines[0] or "ÁUDIO" in lines[0]
+    assert "fone" in lines[1].lower() or "headset" in lines[1].lower()
+    assert "Dapon H02D" in message
+    assert lines[-1] == "#publi"
+    assert message.count("#publi") == 1
+    assert "<b>R$ 589,00</b>" in message
+
+
+def test_previous_tech_drops_html_still_sets_parse_mode():
+    client = TelegramClient("test-token", "@grupo", dry_run=True)
+    assert client._message_params("#publi\n\n<b>OLD</b>")["parse_mode"] == "HTML"
+    assert client._message_params("<b>NEW</b>\ncopy\n\n#publi")["parse_mode"] == "HTML"
+    assert "parse_mode" not in client._message_params("#publi\nplain text")
 
 
 def test_ryzen_sku_removed_but_valid_specs_kept():
