@@ -146,3 +146,90 @@ def test_nontech_product_never_queues(tmp_path):
     with pytest.raises(MLError,match="FORA_DO_NICHO"):
         _queue_validated_product(db,settings,_details(title="Conjunto de panelas de inox"),
                                  "https://meli.la/2MWiFPG")
+
+
+
+def test_generator_ui_accepts_one_link_generated_for_selected_telegram_tag():
+    from app.mercadolivre_autopilot import _generate_affiliate_link
+    import re
+
+    class Element:
+        def __init__(self, *, text="", href="", count=1):
+            self.text, self.href, self._count = text, href, count
+            self.first = self
+            self.value = ""
+            self.clicked = False
+        def count(self):
+            return self._count
+        def is_visible(self, timeout=None):
+            return True
+        def fill(self, value):
+            self.value = value
+        def click(self, timeout=None):
+            self.clicked = True
+        def get_attribute(self, name):
+            return self.href
+        def nth(self, index):
+            return self
+        def inner_text(self, timeout=None):
+            return self.text
+        def input_value(self):
+            return self.value
+        def wait_for(self, timeout=None):
+            return None
+
+    class Page:
+        url = "https://www.mercadolivre.com.br/affiliate-program/gerador"
+        def __init__(self):
+            self.input = Element()
+            self.button = Element()
+            self.link = Element(href="https://meli.la/2MWiFPG")
+        def goto(self, url, **kwargs):
+            self.url = url
+        def locator(self, selector):
+            if selector == "textarea":
+                return self.input
+            if selector.startswith("a[href"):
+                return self.link
+            return Element(count=0)
+        def get_by_role(self, role, name):
+            return self.button
+        def get_by_text(self, text, exact=False):
+            return Element()
+        def wait_for_timeout(self, ms):
+            return None
+
+    page=Page()
+    link=_generate_affiliate_link(page,page.url,"https://www.mercadolivre.com.br/p/MLB24117280")
+    assert link=="https://meli.la/2MWiFPG"
+    assert page.input.value=="https://www.mercadolivre.com.br/p/MLB24117280"
+    assert page.button.clicked
+
+
+def test_generator_refuses_if_telegram_label_missing():
+    from app.mercadolivre_autopilot import _generate_affiliate_link
+
+    class Element:
+        first = None
+        def __init__(self,found=True):
+            self.first=self
+            self.found=found
+        def count(self):
+            return 1 if self.found else 0
+        def is_visible(self,timeout=None):
+            return False
+
+    class Page:
+        url="https://www.mercadolivre.com.br/affiliate-program/generator"
+        def goto(self,url,**kwargs):
+            self.url=url
+        def locator(self,selector):
+            return Element()
+        def get_by_role(self,role,name):
+            return Element()
+        def get_by_text(self,text,exact=False):
+            return Element(found=False)
+
+    with pytest.raises(MLError,match="ETIQUETA_TELEGRAM_NAO_SELECIONADA"):
+        _generate_affiliate_link(Page(),"https://www.mercadolivre.com.br/affiliate-program/generator",
+                                 "https://www.mercadolivre.com.br/p/MLB24117280")
