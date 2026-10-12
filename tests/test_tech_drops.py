@@ -117,6 +117,7 @@ def test_verified_payment_terms_are_not_changed_by_copy():
     assert "R$ 151,30 no Pix" in body
     assert "R$ 151,80 em outros meios de pagamento" in body
     assert "Parcelamento: 3x de R$ 50,60 sem juros" in body
+    assert "Consulte se há parcelamento" not in body
 
 
 def test_unverified_terms_are_never_invented():
@@ -126,6 +127,9 @@ def test_unverified_terms_are_never_invented():
     assert "R$ 589,00" in body
     assert "OFF" not in body
     assert "desconto" not in body.lower()
+    assert "💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio." in body
+    assert "Parcelamento: 10x" not in body
+    assert body.splitlines()[-1] == "#publi"
 
 
 def test_different_products_can_have_different_headlines():
