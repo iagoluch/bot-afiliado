@@ -97,7 +97,7 @@ def test_discovers_authenticated_affiliate_links_and_filters_niche(tmp_path):
     assert "test-only-secret" not in json.dumps(report)
     req,timeout=requests[0]
     assert timeout == 15
-    assert 'keyword: "ssd"' in req.data.decode()
+    assert 'keyword: "ssd"' in json.loads(req.data)["query"]
 
 
 def test_deduplicates_across_keywords(tmp_path):
