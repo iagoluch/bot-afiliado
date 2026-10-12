@@ -25,7 +25,8 @@ def test_product_details_uses_disambiguated_price_not_first_element():
     details=code.split("function productDetails(){",1)[1].split("\nfunction isGenerator(){",1)[0]
     assert "extractVisibleProductPrice()" in details
     assert ".querySelector(" not in details or 'h1.ui-pdp-title' in details
-    assert "price_cents" not in details.split("const selected=extractVisibleProductPrice()")[0]
+    assert details.index("function extractVisibleProductPrice(){") < details.index("const price=extractVisibleProductPrice()")
+    assert "PRODUCT_INSPECTION_ERROR" in details
     assert "buy_now_enabled:true" in details
     assert "VISIBLE_DOM_PRICE_V2" in code
     assert "AMBIGUOUS_PAYMENT_PRICES" in code

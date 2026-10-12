@@ -130,104 +130,113 @@ function searchCards(){
     }
   };
 }
-function extractVisibleProductPrice(){
-  // Prefer the live buy-box price, not a historical amount, an installment,
-  // or an unrelated recommendation. Mercado Livre uses multiple PDP layouts.
-  const tiers=[
-    ".ui-pdp-price__second-line .andes-money-amount",
-    ".ui-pdp-price__main-container .andes-money-amount",
-    "[data-testid='price-part'] .andes-money-amount",
-    ".ui-pdp-price .andes-money-amount"
-  ];
-  const excludedSelector=[
-    "s","del",".andes-money-amount--previous",
-    ".ui-pdp-price__original-value","[class*='original-price']",
-    "[class*='price-original']","[class*='installment']",
-    "[class*='installments']"
-  ].join(",");
-  const readMoney=(node)=>{
-    if(!node||node.getClientRects?.().length===0)return null;
-    if(node.closest?.(excludedSelector))return null;
-    try{
-      let el=node;
-      for(let i=0;i<3&&el;i++,el=el.parentElement){
-        if(getComputedStyle(el).textDecorationLine?.includes("line-through"))return null;
+// Chrome serializes only the injected function, not its surrounding lexical
+// scope. Keep ALL page-inspection helpers inside productDetails so the
+// chrome.scripting.executeScript({func: productDetails}) call is self-contained.
+function productDetails(){
+  function extractVisibleProductPrice(){
+    // Prefer the live buy-box price, not a historical amount, an installment,
+    // or an unrelated recommendation. Mercado Livre uses multiple PDP layouts.
+    const tiers=[
+      ".ui-pdp-price__second-line .andes-money-amount",
+      ".ui-pdp-price__main-container .andes-money-amount",
+      "[data-testid='price-part'] .andes-money-amount",
+      ".ui-pdp-price .andes-money-amount"
+    ];
+    const excludedSelector=[
+      "s","del",".andes-money-amount--previous",
+      ".ui-pdp-price__original-value","[class*='original-price']",
+      "[class*='price-original']","[class*='installment']",
+      "[class*='installments']"
+    ].join(",");
+    const readMoney=(node)=>{
+      if(!node||node.getClientRects?.().length===0)return null;
+      if(node.closest?.(excludedSelector))return null;
+      try{
+        let el=node;
+        for(let i=0;i<3&&el;i++,el=el.parentElement){
+          if(getComputedStyle(el).textDecorationLine?.includes("line-through"))return null;
+        }
+      }catch(_e){}
+      const whole=(node.querySelector(".andes-money-amount__fraction")?.textContent||"").replace(/[.\s]/g,"");
+      const part=(node.querySelector(".andes-money-amount__cents")?.textContent||"00").trim();
+      if(!/^\d{1,8}$/.test(whole)||!/^\d{1,2}$/.test(part))return null;
+      const amount=Number(whole)*100+Number(part.padEnd(2,"0"));
+      return Number.isSafeInteger(amount)&&amount>=100&&amount<=50000000?amount:null;
+    };
+    const buybox=document.querySelector(
+      ".ui-pdp-price__main-container, .ui-pdp-price, [data-testid='price-part']"
+    );
+    if(!buybox)return {status:"PRICE_BOX_MISSING"};
+    const context=String(buybox.innerText||buybox.textContent||"").slice(0,1800);
+    const pixMention=/\bpix\b/i.test(context);
+    const otherMention=/outros meios|outras formas|outros pagamentos/i.test(context);
+    // Use first nonempty semantic tier rather than joining old prices, credits
+    // and installments from several unrelated containers.
+    let values=[],tierUsed="";
+    for(const tier of tiers){
+      const nodes=[...document.querySelectorAll(tier)];
+      const amounts=[...new Set(nodes.map(readMoney).filter(x=>x!==null))].sort((a,b)=>a-b);
+      if(amounts.length){
+        values=amounts;tierUsed=tier;break;
       }
-    }catch(_e){}
-    const whole=(node.querySelector(".andes-money-amount__fraction")?.textContent||"").replace(/[.\s]/g,"");
-    const part=(node.querySelector(".andes-money-amount__cents")?.textContent||"00").trim();
-    if(!/^\d{1,8}$/.test(whole)||!/^\d{1,2}$/.test(part))return null;
-    const amount=Number(whole)*100+Number(part.padEnd(2,"0"));
-    return Number.isSafeInteger(amount)&&amount>=100&&amount<=50000000?amount:null;
-  };
-  const buybox=document.querySelector(
-    ".ui-pdp-price__main-container, .ui-pdp-price, [data-testid='price-part']"
-  );
-  if(!buybox)return {status:"PRICE_BOX_MISSING"};
-  const context=String(buybox.innerText||buybox.textContent||"").slice(0,1800);
-  const pixMention=/\bpix\b/i.test(context);
-  const otherMention=/outros meios|outras formas|outros pagamentos/i.test(context);
-  // Use first nonempty semantic tier rather than joining old prices, credits
-  // and installments from several unrelated containers.
-  let values=[],tierUsed="";
-  for(const tier of tiers){
-    const nodes=[...document.querySelectorAll(tier)];
-    const amounts=[...new Set(nodes.map(readMoney).filter(x=>x!==null))].sort((a,b)=>a-b);
-    if(amounts.length){
-      values=amounts;tierUsed=tier;break;
     }
+    if(!values.length)return {status:"NO_CURRENT_PRICE"};
+    if(values.length>2)return {status:"AMBIGUOUS_MULTIPLE_PRICES"};
+    if(values.length===2&&!pixMention)return {status:"AMBIGUOUS_PAYMENT_PRICES"};
+    // Validate text in the buy box. If there is a cheaper advertised value
+    // not captured by the trusted price elements, do not invent its context.
+    const mainPriceLines=context.split(/[\r\n]+/).filter(line=>
+      !/\b\d+\s*x\b|parcelas?|sem juros|ao m[eê]s|por m[eê]s/i.test(line));
+    const textAmounts=[...mainPriceLines.join("\n").matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
+      .map(m=>{
+        const [whole,cents]=m[1].replace(/\./g,"").split(",");
+        return Number(whole)*100+Number(cents);
+      }).filter(Number.isSafeInteger);
+    if(textAmounts.some(x=>x>=100&&x<values[0])){
+      return {status:"UNPARSED_LOWER_VISIBLE_PRICE"};
+    }
+    // Price with explicit Pix condition is only publishable when the lowest
+    // price was actually identified in the price region.
+    const price=values[0];
+    const alternative=values.length===2&&otherMention?values[1]:null;
+    if(values.length===2&&pixMention&&!otherMention){
+      return {status:"UNLABELED_ALTERNATIVE_PRICE"};
+    }
+    return {status:"VERIFIED",price_cents:price,
+      price_payment_method:pixMention?"PIX":"STANDARD",
+      other_price_cents:alternative,
+      price_evidence:"VISIBLE_DOM_PRICE_V2",
+      price_source:tierUsed};
   }
-  if(!values.length)return {status:"NO_CURRENT_PRICE"};
-  if(values.length>2)return {status:"AMBIGUOUS_MULTIPLE_PRICES"};
-  if(values.length===2&&!pixMention)return {status:"AMBIGUOUS_PAYMENT_PRICES"};
-  // Validate text in the buy box. If there is a cheaper advertised value
-  // not captured by the trusted price elements, do not invent its context.
-  const mainPriceLines=context.split(/[\r\n]+/).filter(line=>
-    !/\b\d+\s*x\b|parcelas?|sem juros|ao m[eê]s|por m[eê]s/i.test(line));
-  const textAmounts=[...mainPriceLines.join("\n").matchAll(/(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})(?!\d)/g)]
-    .map(m=>{
-      const [whole,cents]=m[1].replace(/\./g,"").split(",");
-      return Number(whole)*100+Number(cents);
-    }).filter(Number.isSafeInteger);
-  if(textAmounts.some(x=>x>=100&&x<values[0])){
-    return {status:"UNPARSED_LOWER_VISIBLE_PRICE"};
+  try {
+    const title=(document.querySelector(
+      "h1.ui-pdp-title, h1.poly-component__title, h1[data-testid='product-title']"
+    )?.textContent||"").trim();
+    if(title.length<6)return {status:"PRODUCT_TITLE_MISSING"};
+    // Purchase CTA may be "Comprar agora" OR "Adicionar ao carrinho",
+    // depending on category, buy-box layout and seller. Both are explicit
+    // sellability signals; disabled/hidden controls never prove stock.
+    const purchase=[...document.querySelectorAll("button, a, input[type='submit']")].some(el=>{
+      const label=(el.getAttribute?.("aria-label")||el.value||el.textContent||"")
+        .trim().replace(/\s+/g," ");
+      const enabled=el.getClientRects?.().length>0&&!el.disabled &&
+        el.getAttribute("aria-disabled")!=="true";
+      return enabled&&/^(Comprar agora|Adicionar ao carrinho|Comprar)$/i.test(label);
+    });
+    if(!purchase)return {status:"PURCHASE_CONTROL_MISSING"};
+    const price=extractVisibleProductPrice();
+    if(price.status!=="VERIFIED")return {status:price.status};
+    return {...price,status:"VALIDATED",title:title.slice(0,250),
+      source_url:location.origin+location.pathname.replace(/\/$/,""),
+      buy_now_enabled:true};
+  } catch (_error) {
+    // Never fail silently as PRODUCT_DOM_UNAVAILABLE. Do not expose private
+    // page contents or session state in extension diagnostics.
+    return {status:"PRODUCT_INSPECTION_ERROR"};
   }
-  // Price with explicit Pix condition is only publishable when the lowest
-  // price was actually identified in the price region.
-  const price=values[0];
-  const alternative=values.length===2&&otherMention?values[1]:null;
-  if(values.length===2&&pixMention&&!otherMention){
-    return {status:"UNLABELED_ALTERNATIVE_PRICE"};
-  }
-  return {status:"VERIFIED",price_cents:price,
-    price_payment_method:pixMention?"PIX":"STANDARD",
-    other_price_cents:alternative,
-    price_evidence:"VISIBLE_DOM_PRICE_V2",
-    price_source:tierUsed};
 }
 
-function productDetails(){
-  const title=(document.querySelector(
-    "h1.ui-pdp-title, h1.poly-component__title, h1[data-testid='product-title']"
-  )?.textContent||"").trim();
-  if(title.length<6)return {status:"PRODUCT_TITLE_MISSING"};
-  // Purchase CTA may be "Comprar agora" OR "Adicionar ao carrinho",
-  // depending on category, buy-box layout and seller. Both are explicit
-  // sellability signals; disabled/hidden controls never prove stock.
-  const purchase=[...document.querySelectorAll("button, a, input[type='submit']")].some(el=>{
-    const label=(el.getAttribute?.("aria-label")||el.value||el.textContent||"")
-      .trim().replace(/\s+/g," ");
-    const enabled=el.getClientRects?.().length>0&&!el.disabled &&
-      el.getAttribute("aria-disabled")!=="true";
-    return enabled&&/^(Comprar agora|Adicionar ao carrinho|Comprar)$/i.test(label);
-  });
-  if(!purchase)return {status:"PURCHASE_CONTROL_MISSING"};
-  const price=extractVisibleProductPrice();
-  if(price.status!=="VERIFIED")return {status:price.status};
-  return {...price,status:"VALIDATED",title:title.slice(0,250),
-    source_url:location.origin+location.pathname.replace(/\/$/,""),
-    buy_now_enabled:true};
-}
 function isGenerator(){
   return !!document.querySelector("textarea") &&
     [...document.querySelectorAll("button")].some(b=>/^Gerar$/i.test((b.textContent||"").trim())) &&

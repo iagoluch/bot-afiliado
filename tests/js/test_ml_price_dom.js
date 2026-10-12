@@ -4,9 +4,10 @@ const fs=require("node:fs");
 const path=require("node:path");
 const vm=require("node:vm");
 const script=fs.readFileSync(path.join(__dirname,"../../extensions/ml-chrome/background.js"),"utf8");
-const begin=script.indexOf("function extractVisibleProductPrice(){");
-const end=script.indexOf("\nfunction productDetails(){",begin);
-assert(begin>=0&&end>begin,"actual production price extractor missing");
+const outer=script.indexOf("function productDetails(){");
+const begin=script.indexOf("function extractVisibleProductPrice(){",outer);
+const end=script.indexOf("\n  try {",begin);
+assert(outer>=0 && begin>outer && end>begin,"nested production price extractor missing");
 const fn=script.slice(begin,end)+"\nextractVisibleProductPrice();";
 
 function amount(value,{previous=false, visible=true, near=""}={}){
