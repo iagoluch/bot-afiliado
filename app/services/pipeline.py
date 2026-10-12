@@ -141,6 +141,10 @@ class Pipeline:
             if row is None:
                 continue
             offer = verified_offer_data(self.db, offer_id, row)
+            # Shopee Affiliate API's productOfferV2 does not prove live stock.
+            # Staged candidates must not enter a Telegram publish queue.
+            if offer.get("source_type") == "SHOPEE_AFFILIATE_API_STOCK_UNVERIFIED":
+                continue
             if self.settings.telegram_only_mode and not is_technology_offer(
                 offer, terms=self.settings.technology_offer_terms,
             ):
@@ -200,6 +204,8 @@ class Pipeline:
 
         offer = verified_offer_data(self.db, queue["offer_id"])
         try:
+            if offer.get("source_type") == "SHOPEE_AFFILIATE_API_STOCK_UNVERIFIED":
+                raise ComplianceError("estoque nao verificado pela Shopee Affiliate API")
             if self.settings.telegram_only_mode and not is_technology_offer(
                 offer, terms=self.settings.technology_offer_terms,
             ):
