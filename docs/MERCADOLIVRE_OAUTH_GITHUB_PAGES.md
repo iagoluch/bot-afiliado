@@ -97,3 +97,17 @@ Se receber `HTTP 403`, essa conta não tem o escopo/recurso necessário; não re
 **Atenção:** cadastro de catálogo (`/products/search`) não é anúncio vendável (`/items/{id}`). O retorno não comprova preço, estoque, promoção ou comissão. O bot só poderá publicar depois de obter esses fatos e um link comissionado oficial validado. Esta sondagem não tenta construir links de afiliados por conta própria.
 
 Referência: https://developers.mercadolivre.com.br/pt_br/publicacao-de-produtos/buscador-de-produtos
+
+## 6. Verificar anúncio vencedor e preço com o catálogo
+
+Se `mercadolivre_catalog` retornou IDs, consulte um deles (não confundir com ID de anúncio):
+
+```bash
+.venv/bin/python -m app.mercadolivre_listing MLB27880616
+```
+
+O comando faz até duas leituras oficiais: `GET /products/MLB27880616` e, quando houver `buy_box_winner.item_id` ativo, `GET /items/{item_id}`. Se encontrar anúncio ativo com estoque, preço válido em BRL e URL oficial, retorna `LISTING_VERIFIED`, `price_brl`, `available_quantity` e `product_url`. Se não houver vencedor ou dados suficientes, retorna `NO_ACTIVE_LISTING`.
+
+**ATENÇÃO:** `product_url` é um endereço comum e NÃO é link de afiliado. A consulta nunca grava no SQLite nem autoriza envio ao Telegram; exige link comissionado gerado pelos meios oficiais do Programa de Afiliados. Dados de estoque/preço devem ser novamente confirmados próximo à publicação. Não inventar desconto/cupom.
+
+A documentação oficial para o vencedor da buy box está em: https://developers.mercadolivre.com.br/pt_br/imoveis-gerenciamento-de-perguntas-e-contatos/concorrencia-em-catalogo.
