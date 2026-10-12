@@ -47,3 +47,23 @@ def test_visible_diagnostic_uses_no_native_queue_and_popup_exposes_report():
     assert 'id="diagnose"' in html
     assert 'action:"diagnoseSearch"' in popup
     assert "lastDiagnostics" in popup
+
+
+def test_actual_run_once_reaches_native_queue_and_recovers_empty_background_tab():
+    if shutil.which("node") is None:
+        pytest.skip("node not installed")
+    test_file=ROOT/"tests/js/test_ml_run_once_flow.js"
+    result=subprocess.run(
+        ["node",str(test_file)],capture_output=True,text=True,
+        cwd=ROOT,timeout=15,
+    )
+    assert result.returncode==0,result.stderr
+    assert "product->affiliate->native queue cases OK" in result.stdout
+
+def test_run_once_sets_seen_before_first_candidate_and_diagnoses_stages():
+    code=SOURCE.read_text(encoding="utf-8")
+    block=code.split("async function runOnce(){",1)[1].split("async function diagnoseSearch(){",1)[0]
+    assert block.index("const seen=new Set()") < block.index("seen.has(source)")
+    assert 'await chrome.tabs.update(tab,{active:true})' in block
+    assert "generatorFailure" in block
+    assert "bridgeFailure" in block
