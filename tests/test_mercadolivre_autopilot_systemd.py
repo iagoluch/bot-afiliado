@@ -39,6 +39,6 @@ def test_playwright_supports_ubuntu_2604():
     """Regression for Acer: Playwright 1.55 fails on ubuntu26.04-x64."""
     import re
     content = (ROOT / "requirements-browser.txt").read_text(encoding="utf-8").strip()
-    match = re.fullmatch(r"playwright==(\d+)\\.(\d+)\\.(\d+)", content)
+    match = re.fullmatch(r"playwright==(\d+)\.(\d+)\.(\d+)", content)
     assert match is not None
     assert tuple(map(int, match.groups())) >= (1, 61, 0)
