@@ -213,6 +213,13 @@ def _generate_affiliate_link(page, generator_url: str, source_url: str) -> str |
     page.goto(generator_url, wait_until="domcontentloaded", timeout=30000)
     if not _host_ok(page.url) or not _has_generator(page):
         raise MLError("GERADOR_NAO_ENCONTRADO_OU_LOGIN_EXPIRADO")
+    # Do not silently issue links under another campaign/channel label.
+    try:
+        tag_visible = page.get_by_text("telegram", exact=True).first.is_visible(timeout=2000)
+    except Exception:
+        tag_visible = False
+    if not tag_visible:
+        raise MLError("ETIQUETA_TELEGRAM_NAO_SELECIONADA")
     page.locator("textarea").first.fill(source_url)
     # User-selected 'telegram' label is preserved, never silently replaced.
     page.get_by_role("button", name=re.compile(r"^Gerar$", re.I)).first.click(timeout=10000)
@@ -345,6 +352,8 @@ def setup() -> None:
             input("Quando estiver na tela do Gerador (como no print), pressione ENTER aqui: ")
             for candidate_page in ctx.pages:
                 if _host_ok(candidate_page.url) and _has_generator(candidate_page):
+                    if not candidate_page.get_by_text("telegram", exact=True).first.is_visible(timeout=2000):
+                        raise MLError("SELECIONE_ETIQUETA_TELEGRAM_NO_GERADOR")
                     _save_config(candidate_page.url)
                     print(json.dumps({"status": "GERADOR_CONFIGURADO", "url": candidate_page.url}))
                     return
