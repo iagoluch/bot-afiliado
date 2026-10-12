@@ -151,3 +151,66 @@ def test_installer_pins_only_selected_extension_and_does_not_need_root(tmp_path)
 def test_installer_rejects_malicious_extension_id(tmp_path, invalid):
     with pytest.raises(ValueError):
         install(invalid, home=tmp_path)
+
+
+@pytest.mark.parametrize("changes", [
+    {"price_evidence": None},
+    {"price_evidence": "VISIBLE_DOM_PRICE_V1"},
+    {"price_payment_method": None},
+    {"price_payment_method": "UNKNOWN"},
+    {"price_payment_method": "pix-no-discount"},
+    {"other_price_cents": "900.00"},
+    {"other_price_cents": 90000},
+    {"other_price_cents": -1},
+])
+def test_reject_legacy_or_ambiguous_chrome_prices_even_in_real_mode(tmp_path, changes):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    result = process(record(**changes), settings=conf, db=db)
+    assert result["status"] == "BLOCKED"
+    assert not db.rows("SELECT 1 FROM offers")
+
+
+def test_pix_discount_from_chrome_is_qualified_in_real_telegram_post(tmp_path):
+    from app.services.pipeline import Pipeline
+
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    payload = record(price_cents=75900, price_payment_method="PIX", other_price_cents=90000)
+    result = process(payload, settings=conf, db=db)
+    assert result["status"] == "QUEUED_FOR_WORKER"
+    assert result["queued"] == 1
+
+    offer_id = db.rows("SELECT id FROM offers ORDER BY id DESC LIMIT 1")[0]["id"]
+    class FakeTelegram:
+        def __init__(self):
+            self.posts = []
+        def send_message(self, message):
+            self.posts.append(message)
+            return type("Sent", (), {"message_id": "test-123", "dry_run": False})()
+
+    client = FakeTelegram()
+    pipeline = Pipeline(db, conf, telegram=client, source_adapter="assisted")
+    assert pipeline.curate_and_queue([offer_id], "price-check")
+    published = pipeline.process_one()
+    assert published is not None and published["status"] == "PUBLISHED"
+    assert len(client.posts) == 1
+    assert "R$ 759,00 no Pix" in client.posts[0]
+    assert "R$ 900,00 em outros meios de pagamento" in client.posts[0]
+    assert "https://meli.la/2MWiFPG" in client.posts[0]
+
+
+def test_standard_sale_price_without_pix_is_not_relabelled(tmp_path):
+    from app.services.content import telegram_direct_message
+
+    conf = settings(tmp_path)
+    db = Database(conf.database_path)
+    result = process(record(price_cents=75900), settings=conf, db=db)
+    assert result["status"] == "QUEUED_FOR_WORKER"
+    offer_id = db.rows("SELECT id FROM offers ORDER BY id DESC LIMIT 1")[0]["id"]
+    from app.services.curation import verified_offer_data
+    offer = verified_offer_data(db, offer_id)
+    message = telegram_direct_message(offer)
+    assert "R$ 759,00" in message
+    assert "no Pix" not in message
+    assert "R$ 900,00" not in message
