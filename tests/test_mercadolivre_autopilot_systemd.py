@@ -33,3 +33,12 @@ def test_worker_systemd_uses_existing_safe_publish_pipeline():
     assert "python -m app.worker" in content
     assert "Restart=on-failure" in content
     assert "app.mercadolivre_autopilot" not in content
+
+
+def test_playwright_supports_ubuntu_2604():
+    """Regression for Acer: Playwright 1.55 fails on ubuntu26.04-x64."""
+    import re
+    content = (ROOT / "requirements-browser.txt").read_text(encoding="utf-8").strip()
+    match = re.fullmatch(r"playwright==(\d+)\\.(\d+)\\.(\d+)", content)
+    assert match is not None
+    assert tuple(map(int, match.groups())) >= (1, 61, 0)
