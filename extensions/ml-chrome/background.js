@@ -231,14 +231,18 @@ async function diagnoseSearch(){
       if(search.cards?.length)break;
       if(attempt<7)await new Promise(done=>setTimeout(done,1200));
     }
-    return {
+    const result={
       status:search.cards?.length?"RESULTADOS_ENCONTRADOS":"PAGINA_SEM_PRODUTOS_RECONHECIDOS",
       keyword,found:search.cards?.length||0,
       diagnostics:search.diagnostics,
       instruction:"A aba de busca ficara aberta para inspecao. Nenhuma oferta foi enviada."
     };
+    await chrome.storage.local.set({lastStatus:result.status,lastDetail:"Diagnostico de busca sem publicacao",lastDiagnostics:result});
+    return result;
   }catch(error){
-    return {status:"DIAGNOSTICO_FALHOU",reason:String(error?.message||"ERRO").slice(0,100)};
+    const result={status:"DIAGNOSTICO_FALHOU",reason:String(error?.message||"ERRO").slice(0,100)};
+    await chrome.storage.local.set({lastStatus:result.status,lastDetail:result.reason,lastDiagnostics:result});
+    return result;
   }
 }
 async function resetAlarm(){
