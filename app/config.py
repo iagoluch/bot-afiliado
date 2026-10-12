@@ -12,12 +12,56 @@ from urllib.parse import urlsplit
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ENV_FILE = PROJECT_ROOT / ".env"
 _ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Catalogo amplo de tecnologia: apenas termos de produtos/categorias com contexto.
+# Evitar palavras genericas como "capa", "suporte" e "acessorio" isoladamente.
 DEFAULT_TECH_OFFER_TERMS = (
-    "audio", "cabo usb", "camera", "carregador", "celular", "computador",
-    "console", "fone", "gamer", "hardware", "impressora", "informatica",
-    "memoria ram", "monitor", "mouse", "notebook", "placa de video",
-    "power bank", "roteador", "smartphone", "smartwatch", "ssd", "tablet",
-    "teclado", "tecnologia",
+    # Computadores, notebooks e microcomputadores.
+    "informatica", "tecnologia", "computador", "pc", "desktop", "notebook",
+    "laptop", "ultrabook", "chromebook", "macbook", "imac", "mini pc",
+    "all in one", "workstation", "raspberry pi", "microcomputador",
+    # Componentes, energia e refrigeracao de computador.
+    "hardware", "processador", "cpu", "gpu", "placa mae", "motherboard",
+    "placa de video", "placa grafica", "memoria ram", "ram ddr", "ddr3",
+    "ddr4", "ddr5", "ssd", "nvme", "hd externo", "hd interno",
+    "disco rigido", "sata", "m.2", "pcie", "gabinete pc", "gabinete gamer",
+    "gabinete atx", "fonte atx", "fonte pc", "fonte modular", "cooler",
+    "water cooler", "ventoinha", "dissipador", "pasta termica",
+    "kit upgrade", "placa captura", "placa de rede", "placa wifi",
+    # Perifericos, impressao e escritorio digital.
+    "monitor", "teclado", "mouse", "mousepad", "mouse pad", "webcam",
+    "impressora", "multifuncional", "scanner", "toner impressora",
+    "cartucho impressora", "mesa digitalizadora", "projetor",
+    "suporte monitor", "suporte notebook", "dock station",
+    "docking station", "hub usb", "kvm",
+    # Celulares, tablets, vestiveis e acessorios.
+    "celular", "smartphone", "iphone", "android", "tablet", "ipad",
+    "smartwatch", "smartband", "pulseira inteligente", "relogio inteligente",
+    "fone", "fones", "headphone", "headset", "earbuds", "earbud",
+    "airpods", "fone bluetooth", "microfone", "caixa de som",
+    "soundbar", "audio", "capinha", "capa celular", "capa iphone",
+    "capa tablet", "capa ipad", "pelicula celular", "pelicula iphone",
+    "pelicula tablet", "suporte celular", "suporte smartphone",
+    "suporte tablet", "carregador", "carregamento sem fio", "power bank",
+    "cabo usb", "usb", "usb c", "type c", "lightning", "cabo hdmi",
+    "hdmi", "displayport", "adaptador hdmi", "adaptador usb",
+    # Redes, conectividade e armazenamento portatil.
+    "roteador", "modem", "repetidor wifi", "access point", "wifi", "wi fi",
+    "ethernet", "cabo de rede", "rj45", "switch ethernet", "switch gigabit",
+    "rede mesh", "nas", "nobreak", "estabilizador", "filtro de linha",
+    "pendrive", "pen drive", "flash drive", "cartao memoria",
+    "cartao sd", "micro sd", "microsd",
+    # Jogos, consoles e streaming.
+    "gamer", "gaming", "console", "videogame", "video game",
+    "playstation", "xbox", "nintendo", "steam deck", "joystick",
+    "gamepad", "controle gamer", "volante gamer", "smart tv", "tv box",
+    "chromecast", "fire tv", "roku", "android tv",
+    # Dispositivos conectados e eletronica util.
+    "camera", "camera digital", "camera ip", "camera de seguranca",
+    "camera wifi", "action cam", "gopro", "drone", "smart home",
+    "automacao residencial", "echo dot", "alexa", "google nest",
+    "lampada inteligente", "tomada inteligente", "fechadura digital",
+    "videoporteiro", "campainha inteligente", "smart tag",
+    "localizador bluetooth",
 )
 
 
