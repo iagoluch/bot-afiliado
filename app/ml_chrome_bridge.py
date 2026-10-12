@@ -20,9 +20,39 @@ from app.mercadolivre_autopilot import (
     MLError, _queue_validated_product, affiliate_from_text, normalize_product_url,
 )
 from app.services.collection import is_technology_offer
+from app.services.nvidia_copy import suggest_hook
 
 MAX_MESSAGE = 48_000
 PRODUCT_ID = re.compile(r"MLB-?([0-9]{5,16})(?!\d)", re.I)
+ML_TECH_TOPICS = frozenset({
+    "ssd", "audio", "notebook", "mouse", "teclado", "monitor", "celular",
+    "ram", "tablet", "carregador", "gpu", "rede", "webcam", "placa_mae",
+    "wearable", "console", "impressora", "pendrive", "gabinete", "fonte",
+    "smart_home", "armazenamento", "cpu", "microfone",
+})
+
+
+def _topic_busy(db: Database, topic: str, *, now: datetime | None = None) -> bool:
+    if topic not in ML_TECH_TOPICS:
+        raise MLError("CATEGORIA_INVALIDA")
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=60)).isoformat(timespec="seconds")
+    rows = db.rows(
+        """SELECT 1 FROM offers o
+           WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
+             AND json_extract(o.tracking_metadata_json,'$.ml_topic')=?
+             AND (
+                EXISTS (SELECT 1 FROM publications p
+                        WHERE p.offer_id=o.id AND p.dry_run=0
+                          AND p.published_at>=?)
+                OR EXISTS (SELECT 1 FROM content_jobs j
+                           WHERE j.offer_id=o.id
+                             AND j.status IN ('PENDING','PROCESSING'))
+             )
+           LIMIT 1""",
+        (topic, cutoff),
+    )
+    return bool(rows)
 
 
 def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[str, Any]:
@@ -85,6 +115,12 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
     )
     if rows:
         return {"status": "ALREADY_PUBLISHED", "queued": 0}
+    # A single product category may not dominate a rapid campaign.
+    topic = payload.get("topic")
+    if not isinstance(topic, str) or topic not in ML_TECH_TOPICS:
+        raise MLError("CATEGORIA_INVALIDA")
+    if _topic_busy(db, topic, now=now):
+        return {"status": "TOPIC_COOLDOWN", "queued": 0}
     existing = db.rows(
         """SELECT 1 FROM offers o
            WHERE o.affiliate_network='Mercado Livre Afiliados e Criadores'
@@ -104,9 +140,16 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         "price_evidence": "VISIBLE_DOM_PRICE_V2",
         "price_payment_method": method,
         "other_price_cents": alternate,
+        "ml_topic": topic,
         "stock_status": "IN_STOCK",
         "confirmed_at": now.isoformat(timespec="seconds"),
     }
+    # Optional bounded text-only API call. Failed/slow NVIDIA replies never
+    # break the publication flow and never alter verified commercial facts.
+    if settings.ml_copy_nemotron_enabled and settings.nvidia_api_key:
+        details["copy_hook"] = suggest_hook(
+            title, api_key=settings.nvidia_api_key,
+        )
     result = _queue_validated_product(db, settings, details, affiliate)
     return {
         "status": result["status"],
@@ -121,6 +164,17 @@ def process(message: object, *, settings: Settings | None = None, db: Database |
     action = message.get("action")
     if action == "ping":
         return {"status": "OK", "bridge": "ML_CHROME", "version": 1}
+    if action == "topicStatus":
+        try:
+            settings = settings or Settings.from_env()
+            db = db or Database(settings.database_path)
+            db.init()
+            topic = message.get("topic")
+            if not isinstance(topic, str) or topic not in ML_TECH_TOPICS:
+                return {"status": "BLOCKED", "reason": "CATEGORIA_INVALIDA"}
+            return {"status": "TOPIC_COOLDOWN" if _topic_busy(db, topic) else "OK"}
+        except Exception:
+            return {"status": "BLOCKED", "reason": "VERIFICACAO_LOCAL_FALHOU"}
     if action != "queue":
         return {"status": "BLOCKED", "reason": "ACAO_NAO_PERMITIDA"}
     try:

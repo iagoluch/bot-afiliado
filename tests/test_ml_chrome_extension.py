@@ -27,7 +27,7 @@ def test_manifest_scope_limited_to_ml_and_no_cookie_permissions():
 def test_extension_starts_disabled_not_even_a_login_request():
     js=(EXT/"background.js").read_text(encoding="utf-8")
     assert "enabled:false" in js
-    assert "periodInMinutes:360" in js
+    assert "periodInMinutes:5" in js
     assert "app.ml_chrome_bridge" not in js
     assert "sendNativeMessage" in js
     assert "chrome.cookies.get" not in js

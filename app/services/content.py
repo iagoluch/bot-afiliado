@@ -98,6 +98,13 @@ def telegram_direct_message(offer: Mapping[str, Any]) -> str:
     )
     current = brl(int(offer["current_price_cents"]))
     lines.append(f"💰 {current} no Pix" if is_browser_pix else f"💰 {current}")
+    # Optional Nemotron output is only an extra non-factual hook.
+    # Validate it again when rendering and re-rendering a queued post.
+    if offer.get("source_type") == "ML_BROWSER_VERIFIED":
+        from app.services.nvidia_copy import _sanitize_hook
+        hook = _sanitize_hook(metadata.get("copy_hook"))
+        if hook:
+            lines.append("✨ " + hook)
     if is_browser_pix:
         alternate = metadata.get("other_payment_price_cents")
         if type(alternate) is int and alternate > int(offer["current_price_cents"]):

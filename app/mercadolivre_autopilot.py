@@ -316,6 +316,9 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
             "price_evidence": "VISIBLE_DOM_PRICE_V2",
             "price_payment_method": details["price_payment_method"],
             "other_payment_price_cents": alternate,
+            "ml_topic": details.get("ml_topic"),
+            "copy_hook": details.get("copy_hook"),
+            "copy_provider": "nemotron-3-super" if details.get("copy_hook") else "template",
         },
     )
     pipeline = Pipeline(db, settings)

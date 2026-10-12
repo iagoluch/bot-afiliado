@@ -213,6 +213,8 @@ class Settings:
     telegram_only_mode: bool = False
     telegram_real_enabled: bool = False
     telegram_max_posts_per_hour: int = 4
+    nvidia_api_key: str | None = None
+    ml_copy_nemotron_enabled: bool = False
 
     @classmethod
     def from_env(cls, *, env_file: Path | str = PROJECT_ENV_FILE) -> "Settings":
@@ -285,6 +287,8 @@ class Settings:
             telegram_only_mode=_bool_env("TELEGRAM_ONLY_MODE", False),
             telegram_real_enabled=_bool_env("TELEGRAM_REAL_ENABLED", False),
             telegram_max_posts_per_hour=_int_env("TELEGRAM_MAX_POSTS_PER_HOUR", 4),
+            nvidia_api_key=os.getenv("NVIDIA_API_KEY", "").strip() or None,
+            ml_copy_nemotron_enabled=_bool_env("ML_COPY_NEMOTRON_ENABLED", False),
             shopee_app_id=os.getenv("SHOPEE_APP_ID", "").strip() or None,
             shopee_secret=(
                 os.getenv("SHOPEE_SECRET") or os.getenv("SHOPEE_APP_SECRET") or ""
