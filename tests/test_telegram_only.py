@@ -176,7 +176,7 @@ def test_real_delivery_with_mock_telegram_and_direct_link(tmp_path):
     assert p.process_one() is None
 
 
-def test_real_rate_cap_defer_second_offer_without_claiming_queue(tmp_path):
+def test_real_telegram_does_not_wait_for_artificial_hourly_cap(tmp_path):
     settings = _settings(
         tmp_path, dry_run=False, telegram_real_enabled=True,
         telegram_bot_token="dummy", telegram_chat_id="@publicchannel",
@@ -205,9 +205,11 @@ def test_real_rate_cap_defer_second_offer_without_claiming_queue(tmp_path):
     )
     assert len(pipe.curate_and_queue(ids, "real-two-items")) == 2
     assert pipe.process_one()["status"] == "PUBLISHED"
-    assert pipe.process_one() is None
-    assert len(sent) == 1
-    assert db.queue_depths(dry_run=False)["publish_queue_depth"] == 1
+    # A configured legacy hourly cap of 1 must not hold a second valid offer.
+    # Telegram's own 429 retry_after handling remains covered separately.
+    assert pipe.process_one()["status"] == "PUBLISHED"
+    assert len(sent) == 2
+    assert db.queue_depths(dry_run=False)["publish_queue_depth"] == 0
 
 
 def test_telegram_only_worker_skips_legacy_artificial_media(tmp_path):
