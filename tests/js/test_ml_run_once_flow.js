@@ -59,7 +59,9 @@ async function simulate({emptyInBackground=false,productAvailable=true,linkGener
       if(func===functions.productDetails){
         state.productReads++;
         return productAvailable?{title:"Fone Bluetooth Dapon H02D",
-          price_cents:7490,buy_now_enabled:true,
+          price_cents:7490,price_evidence:"VISIBLE_DOM_PRICE_V2",
+          price_payment_method:"STANDARD",other_price_cents:null,
+          buy_now_enabled:true,
           source_url:"https://www.mercadolivre.com.br/p/MLB24117280"}:null;
       }
       if(func===functions.isGenerator)return true;
