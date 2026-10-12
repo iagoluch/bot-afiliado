@@ -22,32 +22,32 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("⚙️ PROCESSADOR NO RADAR!", "🧠 HORA DE OLHAR O PROCESSADOR!"),
         ("Montando um PC? Vale colocar esse processador na comparação.",
          "Procurando uma CPU para o seu projeto? Dá uma olhada neste modelo."),
-        r"\b(?:ryzen|cpu|processador|pc|am4|intel)\b")),
+        r"\b(?:ryzen|cpu|processador|am4|intel)\b")),
     (r"\bgabinete\b.*\b(?:aqu[aá]rio|vidro)\b", Style(
         ("🧊 VISUAL AQUÁRIO NO SETUP!", "🖥️ GABINETE EM DESTAQUE!"),
         ("Curte gabinete com vidro e visual aquário? Confira este modelo.",
          "Quer comparar gabinetes com vidro para o setup? Olha essa opção."),
-        r"\b(?:gabinete|aqu[aá]rio|vidro|setup)\b")),
+        r"\b(?:gabinete|aqu[aá]rio|vidro)\b")),
     (r"\bgabinete\b", Style(
         ("🖥️ GABINETE NO RADAR!", "🧰 HORA DE PENSAR NO GABINETE!"),
         ("Montando seu setup? Vale comparar esse gabinete.",
          "Procurando gabinete para o PC? Olha esse modelo."),
-        r"\b(?:gabinete|setup|pc)\b")),
+        r"\b(?:gabinete)\b")),
     (r"\b(?:ssd|nvme|m\.2)\b", Style(
         ("💾 SSD NO RADAR!", "💽 OLHO NO ARMAZENAMENTO!"),
         ("Procurando SSD para o seu PC? Confira esse modelo.",
          "Na lista de upgrades de armazenamento? Dá uma olhada nesse SSD."),
-        r"\b(?:ssd|nvme|armazenamento|disco|pc)\b")),
+        r"\b(?:ssd|nvme|armazenamento)\b")),
     (r"\b(?:placa de v[ií]deo|gpu|geforce|radeon)\b", Style(
         ("🎮 PLACA DE VÍDEO NA MIRA!", "🖥️ GPU NO RADAR!"),
         ("Comparando placas de vídeo para o PC? Veja essa opção.",
          "De olho em GPU para o seu setup? Coloque esse modelo na lista."),
-        r"\b(?:gpu|placa de v[ií]deo|geforce|radeon|pc)\b")),
+        r"\b(?:gpu|placa de v[ií]deo|geforce|radeon)\b")),
     (r"\b(?:notebook|laptop)\b", Style(
         ("💻 NOTEBOOK NA SELEÇÃO!", "💻 DE OLHO NOS NOTEBOOKS!"),
         ("Pesquisando notebook? Coloque esse modelo na comparação.",
          "Trabalho, estudo ou lazer: vale olhar as especificações desse notebook."),
-        r"\b(?:notebook|laptop|estudo|trabalho)\b")),
+        r"\b(?:notebook|laptop)\b")),
     (r"\b(?:celular|smartphone|iphone|galaxy)\b", Style(
         ("📱 CELULAR NO RADAR!", "📲 SMARTPHONE NA SELEÇÃO!"),
         ("Pensando em trocar de celular? Confira essa opção.",
@@ -57,22 +57,22 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("🧠 MEMÓRIA RAM NA LISTA!", "🛠️ UPGRADES NA MIRA!"),
         ("Pesquisando memória RAM para seu PC? Confira este modelo.",
          "Montando a configuração do computador? Veja esta opção de RAM."),
-        r"\b(?:ram|mem[oó]ria|ddr|pc|computador)\b")),
+        r"\b(?:ram|mem[oó]ria|ddr)\b")),
     (r"\bmonitor\b", Style(
         ("🖥️ MONITOR NO RADAR!", "👀 DE OLHO NA TELA!"),
         ("Comparando monitores para seu setup? Confira essa tela.",
          "Procurando monitor novo? Vale conferir as especificações deste."),
-        r"\b(?:monitor|tela|display|setup)\b")),
+        r"\b(?:monitor|tela|display)\b")),
     (r"\b(?:mouse)\b", Style(
         ("🖱️ MOUSE NA SELEÇÃO!", "🖱️ PERIFÉRICO NO RADAR!"),
         ("De olho num mouse para o setup? Confira esse modelo.",
          "Comparando mouses? Vale colocar este na lista."),
-        r"\b(?:mouse|mouses|perif[eé]rico|setup)\b")),
+        r"\b(?:mouse|mouses|perif[eé]rico)\b")),
     (r"\b(?:teclado)\b", Style(
         ("⌨️ TECLADO NO RADAR!", "⌨️ PERIFÉRICO NA MIRA!"),
         ("Procurando teclado para o PC? Confira esse modelo.",
          "De olho nos teclados para o setup? Veja essa opção."),
-        r"\b(?:teclado|setup|pc|digita[cç][aã]o)\b")),
+        r"\b(?:teclado|digita[cç][aã]o)\b")),
     (r"\b(?:fone|headset|earbuds|bluetooth\s+headphone)\b", Style(
         ("🎧 ÁUDIO NA SELEÇÃO!", "🎵 FONE NO RADAR!"),
         ("Comparando fones de ouvido? Confira esse modelo.",
@@ -87,12 +87,12 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
         ("Procurando carregador? Confira esta opção.",
          "Comparando carregadores? Veja este modelo."),
-        r"\b(?:carregador|carga|usb)\b")),
+        r"\b(?:carregador|carga)\b")),
     (r"\b(?:placa.m[aã]e|motherboard)\b", Style(
         ("🛠️ PLACA-MÃE NA LISTA!", "🧩 MONTAGEM DE PC NO RADAR!"),
         ("Montando um PC? Confira essa placa-mãe.",
          "Pesquisando placa-mãe para seu projeto? Veja esse modelo."),
-        r"\b(?:placa.m[aã]e|motherboard|pc)\b")),
+        r"\b(?:placa.m[aã]e|motherboard)\b")),
     (r"\b(?:pendrive|pen drive)\b", Style(
         ("💾 ARMAZENAMENTO NO RADAR!", "🔌 PENDRIVE NA LISTA!"),
         ("Comparando pendrives? Confira esta opção.",
@@ -112,7 +112,7 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("🎙️ MICROFONE NA LISTA!", "🎤 ÁUDIO NO RADAR!"),
         ("Procurando microfone para seu setup? Olha este modelo.",
          "Comparando microfones? Confira esta opção."),
-        r"\b(?:microfone|[aá]udio|setup)\b")),
+        r"\b(?:microfone)\b")),
     (r"\b(?:smartwatch|rel[oó]gio\s+inteligente)\b", Style(
         ("⌚ WEARABLE NA SELEÇÃO!", "⌚ RELÓGIO NO RADAR!"),
         ("Pesquisando smartwatch? Confira esse modelo.",
@@ -159,5 +159,10 @@ def creative_copy(title: str, identity: str, ai_hook: str | None = None) -> tupl
     """Stable selection; require the AI line to actually relate to the product."""
     style = _style(title)
     heading = _choice(style.headlines, identity, "heading")
-    hook = ai_hook if (ai_hook and re.search(style.relevance, ai_hook, re.I)) else None
+    generic = bool(ai_hook and re.search(
+        r"\b(?:mais uma op[cç][aã]o|op[cç][aã]o de tecnologia|estilo [uú]nico|"
+        r"produto imperd[ií]vel|confira esta oferta)\b", ai_hook, re.I
+    ))
+    hook = ai_hook if (ai_hook and not generic
+                       and re.search(style.relevance, ai_hook, re.I)) else None
     return heading, hook or _choice(style.blurbs, identity, "body")
