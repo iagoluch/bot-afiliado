@@ -72,6 +72,9 @@ def _details(*, timestamp=None, price=7490, title="Headphone Dapon H02D Bluetoot
         "external_id":"MLB24117280",
         "source_url":"https://www.mercadolivre.com.br/p/MLB24117280",
         "title":title,"price_cents":price,
+        "price_evidence":"VISIBLE_DOM_PRICE_V2",
+        "price_payment_method":"STANDARD",
+        "other_price_cents":None,
         "stock_status":"IN_STOCK",
         "confirmed_at":timestamp or utc_now(),
     }
