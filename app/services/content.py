@@ -115,6 +115,10 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     )
     shown_price = f"{brl(price)} no Pix" if is_pix else brl(price)
     lines.append(f"💰 <b>{shown_price}</b>")
+    if not is_pix:
+        # Pix is a checkout option in this storefront, but a visible standard
+        # price does NOT prove an exclusive Pix price or a Pix discount.
+        lines.append("💠 Pix: confira o valor e as condições no checkout.")
     if is_pix:
         alternative = metadata.get("other_payment_price_cents")
         if type(alternative) is int and alternative > price:
