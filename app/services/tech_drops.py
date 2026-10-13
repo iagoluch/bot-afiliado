@@ -113,7 +113,7 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Procurando um adaptador? Confira os conectores anunciados.",
          "Comparando adaptadores para o setup? Veja esta opção."),
         r"\b(?:adaptador|conector|hub)\b")),
-    (r"\b(?:carregadores?|fonte\s+(?:usb|carregadora?|de\s+alimenta[cç][aã]o))\b", Style(
+    (r"\b(?:carregador(?:es)?|fonte\s+(?:usb|carregadora?|de\s+alimenta[cç][aã]o))\b", Style(
         ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
         ("Precisa de um carregador? Compare a potência e o conector anunciados.",
          "Carregador novo no radar: confira se a conexão é a certa para seu aparelho."),
