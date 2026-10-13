@@ -83,12 +83,12 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Comparando fones de ouvido? Confira esse modelo.",
          "Na busca por headset ou fone? Olha essa opção de áudio."),
         r"\b(?:fone|headset|[aá]udio|ouvido)\b")),
-    (r"\b(?:cabo(?:s)?\s+(?:usb|tipo\s+[a-c]|de\s+dados|hdmi|lightning)|cabo(?:s)?\s+blindado|cabo(?:s)?\s+de\s+carga|cabo(?:s)?\s+carregador)\b", Style(
+    (r"\b(?:cabos?|cord[aã]o\s+usb)\b", Style(
         ("🔌 CABO NA SELEÇÃO!", "🔗 CONEXÃO NO RADAR!"),
         ("Precisando de um cabo para o aparelho? Confira os conectores anunciados.",
          "Buscando um cabo novo? Veja o tipo de conexão deste modelo."),
         r"\b(?:cabo|usb|lightning|hdmi)\b")),
-    (r"\b(?:capinha|capa\s+(?:protetora|de\s+prote[cç][aã]o|para\s+(?:iphone|celular|smartphone|galaxy|ipad|tablet))|case\s+(?:protetora|para\s+(?:iphone|celular|smartphone|galaxy|ipad|tablet)))\b", Style(
+    (r"\b(?:capinhas?|capas?|case)\b", Style(
         ("📱 PROTEÇÃO NA SELEÇÃO!", "🛡️ CAPA NO RADAR!"),
         ("Procurando uma capa para o aparelho? Confira esta opção.",
          "Quer comparar capinhas? Veja o modelo e a compatibilidade informada."),
@@ -98,7 +98,7 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Buscando uma película? Confira para quais modelos ela é indicada.",
          "Comparando proteção de tela? Veja esta opção."),
         r"\b(?:pel[ií]cula|prote[cç][aã]o|tela)\b")),
-    (r"\b(?:suporte(?:s)?\s+(?:para|de)\s+(?:celular|smartphone|iphone|notebook|tablet|monitor|ipad)|suporte\s+articulado)\b", Style(
+    (r"\b(?:suportes?)\b", Style(
         ("🧰 SUPORTE NA SELEÇÃO!", "📐 ACESSÓRIO NO RADAR!"),
         ("Procurando suporte para organizar o setup? Confira este modelo.",
          "Comparando suportes para seus aparelhos? Veja esta opção."),
@@ -113,10 +113,10 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Procurando um adaptador? Confira os conectores anunciados.",
          "Comparando adaptadores para o setup? Veja esta opção."),
         r"\b(?:adaptador|conector|hub)\b")),
-    (r"\b(?:carregador|fonte\s+usb)\b", Style(
+    (r"\b(?:carregadores?|fonte\s+(?:usb|carregadora?|de\s+alimenta[cç][aã]o))\b", Style(
         ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
-        ("Procurando carregador? Confira esta opção.",
-         "Comparando carregadores? Veja este modelo."),
+        ("Precisa de um carregador? Compare a potência e o conector anunciados.",
+         "Carregador novo no radar: confira se a conexão é a certa para seu aparelho."),
         r"\b(?:carregador|carga)\b")),
     (r"\b(?:placa.m[aã]e|motherboard)\b", Style(
         ("🛠️ PLACA-MÃE NA LISTA!", "🧩 MONTAGEM DE PC NO RADAR!"),
