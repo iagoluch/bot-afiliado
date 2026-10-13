@@ -115,10 +115,6 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     )
     shown_price = f"{brl(price)} no Pix" if is_pix else brl(price)
     lines.append(f"💰 <b>{shown_price}</b>")
-    if not is_pix:
-        # Pix is a checkout option in this storefront, but a visible standard
-        # price does NOT prove an exclusive Pix price or a Pix discount.
-        lines.append("💠 Pix: confira o valor e as condições no checkout.")
     if is_pix:
         alternative = metadata.get("other_payment_price_cents")
         if type(alternative) is int and alternative > price:
@@ -141,7 +137,7 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
         # A verified amount was not visible on the product page.
         # Keep the card purchase cue without promising that credit or
         # installments are available for this product/account.
-        lines.append("💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio.")
+        lines.append("💳 Cartão: consulte o parcelamento no anúncio.")
 
     # Delivery is optional and location-specific. Never promise a date,
     # shipping fee or fulfillment service without visible buy-box evidence.
