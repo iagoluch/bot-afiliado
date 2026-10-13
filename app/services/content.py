@@ -98,13 +98,10 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     # derived from the product page or seller; never trust seller markup.
     # Put the creative hook first for Telegram push notification previews.
     # Keep the advertising disclosure visible at the very end of the post.
-    lines = [
-        f"<b>{escape(heading)}</b>",
-        escape(phrase),
-        "",
-        f"<b>{escape(clean_title(raw_title))}</b>",
-        "",
-    ]
+    lines = [f"<b>{escape(heading)}</b>"]
+    if phrase:
+        lines.append(escape(phrase))
+    lines.extend(["", f"<b>{escape(clean_title(raw_title))}</b>", ""])
     if discount:
         lines.append(f"🏷 De {brl(discount[0])}")
 
@@ -133,11 +130,8 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
     ):
         suffix = " sem juros" if interest_free else " com juros" if with_interest else ""
         lines.append(f"💳 Parcelamento: {count}x de {brl(amount)}{suffix}")
-    else:
-        # A verified amount was not visible on the product page.
-        # Keep the card purchase cue without promising that credit or
-        # installments are available for this product/account.
-        lines.append("💳 Cartão: consulte o parcelamento no anúncio.")
+    # If there is no verified card plan, omit this block entirely.
+    # Never substitute the generic "consulte no anúncio" line for evidence.
 
     # Delivery is optional and location-specific. Never promise a date,
     # shipping fee or fulfillment service without visible buy-box evidence.
