@@ -56,7 +56,7 @@ TITLES = [
     ("Console Playstation 5 Slim", "console"),
     ("Pendrive Kingston USB-C 128GB", "pendrive"),
     ("Kit Gamer Teclado Mouse Headset", "kit"),
-    ("Organizador de cabos para setup", "unknown"),
+    ("Organizador de cabos para setup", "organizer"),
     ("Produto Eletrônico XYZ Genérico", "unknown"),
 ]
 
