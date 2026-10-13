@@ -80,11 +80,78 @@ def test_tablet_with_ram_and_keyboard_uses_tablet_copy():
     assert "MEMÓRIA RAM NA LISTA" not in body
 
 
-def test_standard_price_mentions_pix_without_unverified_pix_price():
+def test_standard_price_does_not_claim_any_pix_terms_without_evidence():
     body = telegram_direct_message(ml_offer("Tablet VAIO TL12 8GB RAM"))
-    assert "💠 Pix: confira o valor e as condições no checkout." in body
-    assert "R$ 589,00 no Pix" not in body
+    assert "Pix" not in body
     assert "<b>R$ 589,00</b>" in body
+    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
+
+
+@pytest.mark.parametrize(("title", "correct", "wrong"), [
+    (
+        "Carregador Turbo Super Rápido 30w Para iPhone 15 16 17 Pro Max - Cabo Blindado Tipo Usb C Dtimp",
+        ("CARREGADOR", "ACESSÓRIO"),
+        ("SMARTPHONE", "CELULAR"),
+    ),
+    ("Fone de ouvido Bluetooth para iPhone", ("ÁUDIO", "FONE"), ("SMARTPHONE", "CELULAR")),
+    ("Cabo USB-C reforçado para iPhone 16", ("CABO", "CONEXÃO"), ("SMARTPHONE", "CELULAR")),
+    ("Capa transparente para iPhone 15", ("CAPA", "PROTEÇÃO"), ("SMARTPHONE", "CELULAR")),
+    ("Película de vidro para Galaxy S24", ("PELÍCULA", "PROTEÇÃO"), ("SMARTPHONE", "CELULAR")),
+    ("Suporte de notebook ajustável", ("SUPORTE", "ACESSÓRIO"), ("NOTEBOOK",)),
+    ("Teclado Bluetooth para iPad", ("TECLADO", "PERIFÉRICO"), ("TABLET",)),
+    ("Mouse sem fio para notebook Lenovo", ("MOUSE", "PERIFÉRICO"), ("NOTEBOOK",)),
+    ("Carregador 65W para notebook Acer", ("CARREGADOR", "ACESSÓRIO"), ("NOTEBOOK",)),
+    ("Webcam Full HD para notebook", ("CÂMERA", "WEBCAM"), ("NOTEBOOK",)),
+    ("SSD SATA 1TB para notebook", ("SSD", "ARMAZENAMENTO"), ("NOTEBOOK",)),
+    ("Celular iPhone 15 128GB com cabo", ("CELULAR", "SMARTPHONE"), ("CABO",)),
+    ("Notebook Lenovo 8GB RAM com fonte USB", ("NOTEBOOK",), ("CARREGADOR",)),
+])
+def test_primary_product_wins_over_compatibility_device(title, correct, wrong):
+    body = telegram_direct_message(ml_offer(title))
+    headline, blurb = body.splitlines()[:2]
+    assert any(phrase in headline for phrase in correct)
+    assert all(phrase not in headline for phrase in wrong)
+    assert "#publi" == body.splitlines()[-1]
+    assert "https://meli.la/2MWiFPG" in body
+    assert "Mais uma opção de tecnologia" not in body
+
+
+def test_real_charger_regression_no_false_smartphone_or_pix_claim():
+    title = (
+        "Carregador Turbo Super Rápido 30w Para iPhone 15 16 17 Pro Max "
+        "- Cabo Blindado Tipo Usb C Dtimp"
+    )
+    offer = ml_offer(
+        title, current_price_cents=3790,
+        tracking_metadata={
+            "price_evidence": "VISIBLE_DOM_PRICE_V2",
+            "price_payment_method": "STANDARD",
+            "shipping_evidence": "VISIBLE_DOM_SHIPPING_V1",
+            "shipping_free": False,
+            "shipping_tomorrow": True,
+            "shipping_full": True,
+        },
+    )
+    body = telegram_direct_message(offer)
+    assert "Carregador Turbo" in body
+    assert "R$ 37,90" in body
+    assert "Pix" not in body
+    assert "Pensando em trocar de celular" not in body
+    assert "PREÇO CAIU" not in body
+    assert "Previsão de entrega para amanhã" in body
+    assert "Envio FULL anunciado" in body
+    assert "Frete grátis" not in body
+    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
+    assert body.endswith("https://meli.la/2MWiFPG\n\n#publi")
+
+
+def test_nemotron_phone_hook_not_allowed_for_charger():
+    charger = "Carregador USB-C de 30W para iPhone 15"
+    headline, fallback = creative_copy(charger, "real-test", "Troque seu iPhone por outro smartphone.")
+    assert "CARREGADOR" in headline or "ACESSÓRIO" in headline
+    assert "iPhone" not in fallback and "smartphone" not in fallback
+    _, good = creative_copy(charger, "real-test", "Precisa de um carregador para comparar com outros?")
+    assert good == "Precisa de um carregador para comparar com outros?"
 
 
 def test_ryzen_sku_removed_but_valid_specs_kept():
@@ -143,7 +210,7 @@ def test_unverified_terms_are_never_invented():
     assert "R$ 589,00" in body
     assert "OFF" not in body
     assert "desconto" not in body.lower()
-    assert "💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio." in body
+    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
     assert "Parcelamento: 10x" not in body
     assert body.splitlines()[-1] == "#publi"
 
