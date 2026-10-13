@@ -78,11 +78,41 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Procurando teclado para o PC? Confira esse modelo.",
          "De olho nos teclados para o setup? Veja essa opção."),
         r"\b(?:teclado|digita[cç][aã]o)\b")),
-    (r"\b(?:fone|headset|earbuds|bluetooth\s+headphone)\b", Style(
+    (r"\b(?:fones?|headset|headphones?|earbuds)\b", Style(
         ("🎧 ÁUDIO NA SELEÇÃO!", "🎵 FONE NO RADAR!"),
         ("Comparando fones de ouvido? Confira esse modelo.",
          "Na busca por headset ou fone? Olha essa opção de áudio."),
         r"\b(?:fone|headset|[aá]udio|ouvido)\b")),
+    (r"\b(?:cabo(?:s)?\s+(?:usb|tipo\s+[a-c]|de\s+dados|hdmi|lightning)|cabo(?:s)?\s+blindado|cabo(?:s)?\s+de\s+carga|cabo(?:s)?\s+carregador)\b", Style(
+        ("🔌 CABO NA SELEÇÃO!", "🔗 CONEXÃO NO RADAR!"),
+        ("Precisando de um cabo para o aparelho? Confira os conectores anunciados.",
+         "Buscando um cabo novo? Veja o tipo de conexão deste modelo."),
+        r"\b(?:cabo|usb|lightning|hdmi)\b")),
+    (r"\b(?:capinha|capa\s+(?:protetora|de\s+prote[cç][aã]o|para\s+(?:iphone|celular|smartphone|galaxy|ipad|tablet))|case\s+(?:protetora|para\s+(?:iphone|celular|smartphone|galaxy|ipad|tablet)))\b", Style(
+        ("📱 PROTEÇÃO NA SELEÇÃO!", "🛡️ CAPA NO RADAR!"),
+        ("Procurando uma capa para o aparelho? Confira esta opção.",
+         "Quer comparar capinhas? Veja o modelo e a compatibilidade informada."),
+        r"\b(?:capa|capinha|case|prote[cç][aã]o)\b")),
+    (r"\b(?:pel[ií]cula|protetor(?:a)?\s+de\s+tela)\b", Style(
+        ("🛡️ PELÍCULA NO RADAR!", "📱 PROTEÇÃO DE TELA NA LISTA!"),
+        ("Buscando uma película? Confira para quais modelos ela é indicada.",
+         "Comparando proteção de tela? Veja esta opção."),
+        r"\b(?:pel[ií]cula|prote[cç][aã]o|tela)\b")),
+    (r"\b(?:suporte(?:s)?\s+(?:para|de)\s+(?:celular|smartphone|iphone|notebook|tablet|monitor|ipad)|suporte\s+articulado)\b", Style(
+        ("🧰 SUPORTE NA SELEÇÃO!", "📐 ACESSÓRIO NO RADAR!"),
+        ("Procurando suporte para organizar o setup? Confira este modelo.",
+         "Comparando suportes para seus aparelhos? Veja esta opção."),
+        r"\b(?:suporte|organizar)\b")),
+    (r"\b(?:power\s*bank|bateria\s+externa)\b", Style(
+        ("🔋 BATERIA PORTÁTIL NA LISTA!", "⚡ ENERGIA NO RADAR!"),
+        ("Buscando uma bateria externa? Confira a capacidade anunciada.",
+         "De olho em power banks? Veja este modelo."),
+        r"\b(?:power\s*bank|bateria|port[aá]til)\b")),
+    (r"\b(?:adaptador(?:es)?\s+(?:usb|tipo\s+c|hdmi|de\s+tomada|para\s+(?:celular|iphone|notebook))|hub\s+usb)\b", Style(
+        ("🔌 ADAPTADOR NO RADAR!", "🔗 CONEXÃO NA SELEÇÃO!"),
+        ("Procurando um adaptador? Confira os conectores anunciados.",
+         "Comparando adaptadores para o setup? Veja esta opção."),
+        r"\b(?:adaptador|conector|hub)\b")),
     (r"\b(?:carregador|fonte\s+usb)\b", Style(
         ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
         ("Procurando carregador? Confira esta opção.",
@@ -147,7 +177,19 @@ def clean_title(raw: str, max_length: int = 106) -> str:
 
 
 def _style(title: str) -> Style:
-    return next((style for pattern, style in STYLES if re.search(pattern, title, re.I)), DEFAULT)
+    """Choose the product itself, not the device named as compatibility.
+
+    Earlier versions selected the first matching *rule*: an accessory
+    "Carregador ... para iPhone" therefore incorrectly became a smartphone.
+    Prefer the first product noun in the title; only use rule order to break
+    ties at the same offset.
+    """
+    candidates = (
+        (match.start(), index, style)
+        for index, (pattern, style) in enumerate(STYLES)
+        if (match := re.search(pattern, title, re.I)) is not None
+    )
+    return min(candidates, default=(0, 0, DEFAULT), key=lambda x: (x[0], x[1]))[2]
 
 
 def _choice(options: tuple[str, ...], identity: str, salt: str) -> str:
