@@ -109,6 +109,22 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
             or count * installment > price * 2.5
         ):
             raise MLError("PARCELAMENTO_SEM_COMPROVACAO")
+    shipping_evidence = product.get("shipping_evidence")
+    shipping_free = product.get("shipping_free")
+    shipping_tomorrow = product.get("shipping_tomorrow")
+    shipping_full = product.get("shipping_full")
+    shipping_flags = (shipping_free, shipping_tomorrow, shipping_full)
+    # These optional facts must be explicitly verified in the product
+    # delivery area. Older versions of the extension remain compatible.
+    if shipping_evidence is None:
+        if any(value is not None and value is not False for value in shipping_flags):
+            raise MLError("ENTREGA_SEM_COMPROVACAO")
+    elif (
+        shipping_evidence != "VISIBLE_DOM_SHIPPING_V1"
+        or any(type(value) is not bool for value in shipping_flags)
+        or not any(shipping_flags)
+    ):
+        raise MLError("ENTREGA_SEM_COMPROVACAO")
     if product.get("buy_now_enabled") is not True:
         raise MLError("COMPRA_NAO_CONFIRMADA")
     if affiliate_from_text(affiliate) != affiliate:
@@ -158,6 +174,10 @@ def _queue(payload: dict[str, Any], settings: Settings, db: Database) -> dict[st
         "installment_cents": installment,
         "installment_interest_free": interest_free,
         "installment_with_interest": with_interest,
+        "shipping_evidence": shipping_evidence,
+        "shipping_free": shipping_free is True,
+        "shipping_tomorrow": shipping_tomorrow is True,
+        "shipping_full": shipping_full is True,
         "ml_topic": topic,
         "stock_status": "IN_STOCK",
         "confirmed_at": now.isoformat(timespec="seconds"),
