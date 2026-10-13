@@ -128,6 +128,9 @@ CATEGORIES: tuple[Category, ...] = (
     Category("pendrive", "pendrive", "💾",
              (r"\bpendrives?\b", r"\bpen[\s-]?drive\b"),
              ("pendrive", "armazenamento")),
+    Category("organizer", "organizador", "🧰",
+             (r"\borganizadores?\b", r"\borganizador(?:a)?\b"),
+             ("organizador", "organização")),
     Category("kit", "kit de acessórios", "🧰",
              (r"\bkit\s+(?:gamer|teclado|perif[eé]ricos)\b", r"\bcombo\s+(?:gamer|teclado|mouse)\b"),
              ("kit", "combo", "acessórios")),
@@ -145,7 +148,7 @@ _COMPATIBILITY = re.compile(
 # Whitelist of neutral, literal technical tokens. Each displayed token must
 # occur in the seller's advertised title. Nothing is generated numerically.
 _FEATURE_PATTERNS = (
-    re.compile(r"\b(?:tws|anc|ipx[0-9]|nvme|m[.]2|amoled|oled|ips|full\s*hd|qhd|4k|gan)\b", re.I),
+    re.compile(r"\b(?:tws|anc|ipx[0-9]|nvme|m[.]2|amoled|oled|ips|full\s*hd|qhd|4k|gan|hdmi\s*\d(?:[.,]\d)?)\b", re.I),
     re.compile(r"\b(?:usb[\s-]?c|tipo\s+c|lightning|bluetooth\s*\d(?:[.,]\d)?|wi[\s-]?fi\s*[4567]|ddr[345])\b", re.I),
     re.compile(r"\b\d{1,4}(?:[.,]\d+)?\s*(?:hz|w|mah)\b", re.I),
     re.compile(r"\b\d{1,4}\s*(?:gb|tb)\b(?:\s+ram)?", re.I),
