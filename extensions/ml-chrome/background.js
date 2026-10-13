@@ -343,55 +343,6 @@ function productDetails(){
   }
 }
 
-// Read-only, user-triggered evidence for real Mercado Livre payment layouts.
-// Outputs only scoped selector counts and sanitized installment expressions.
-// No raw page HTML, address, session data, cart, cookies, credentials or URLs.
-function inspectFinancialRegions(){
-  const selectors=[
-    ".ui-pdp-price", ".ui-pdp-price__subtitles", ".ui-pdp-installments",
-    ".ui-pdp-payment-methods", "[data-testid='buy-box']",
-    "[data-testid='installments']", ".ui-pdp-buybox",
-    ".ui-pdp-container__row--price", "[class*='installment']"
-  ];
-  const matched=[], regions=[];
-  const re=/\b(?:[2-9]|1\d|2[0-4])\s*x\s*(?:de\s*)?(?:R\$\s*)?\d{1,7}(?:[.]\d{3})*,\d{2}\s*(?:sem|com)\s+juros/gi;
-  for(const selector of selectors){
-    const nodes=[...document.querySelectorAll(selector)].slice(0,5);
-    let visible=0, signals=0;
-    for(const node of nodes){
-      if(!node.getClientRects?.().length)continue;
-      visible++;
-      const txt=String(node.innerText||"").slice(0,6000);
-      if(/\b(?:juros|parcelas?|cart[aã]o)\b/i.test(txt))signals++;
-      for(const part of txt.matchAll(re)){
-        const term=part[0].replace(/\s+/g," ").slice(0,70);
-        if(!matched.includes(term)&&matched.length<12)matched.push(term);
-      }
-    }
-    regions.push({selector,total:nodes.length,visible,paymentSignals:signals});
-  }
-  return {status:"DIAGNOSTICO_FINANCEIRO",regions,verifiedExpressions:matched};
-}
-async function diagnoseProduct(){
-  const tabs=await chrome.tabs.query({active:true,currentWindow:true});
-  const tab=tabs[0];
-  if(!tab||!productUrl(tab.url))return {status:"ABRA_UM_PRODUTO_DO_MERCADO_LIVRE"};
-  try{
-    const [facts, details]=await Promise.all([
-      exec(tab.id,inspectFinancialRegions),exec(tab.id,productDetails)
-    ]);
-    return {
-      status:"DIAGNOSTICO_FINANCEIRO",
-      productStatus:details?.status||"SEM_RETORNO",
-      priceCents:details?.price_cents??null,
-      installmentsRead:details?.installment_count??null,
-      interestFreeRead:details?.installment_interest_free??null,
-      ...facts,
-      instruction:"Somente diagnostico local, sem publicacao ou envio de HTML."
-    };
-  }catch(_e){return {status:"DIAGNOSTICO_PRODUTO_FALHOU"};}
-}
-
 function isGenerator(){
   return !!document.querySelector("textarea") &&
     [...document.querySelectorAll("button")].some(b=>/^Gerar$/i.test((b.textContent||"").trim())) &&
@@ -540,6 +491,55 @@ async function runOnce(){
     busy=false;
   }
 }
+// Read-only, user-triggered evidence for real Mercado Livre payment layouts.
+// Outputs only scoped selector counts and sanitized installment expressions.
+// No raw page HTML, address, session data, cart, cookies, credentials or URLs.
+function inspectFinancialRegions(){
+  const selectors=[
+    ".ui-pdp-price", ".ui-pdp-price__subtitles", ".ui-pdp-installments",
+    ".ui-pdp-payment-methods", "[data-testid='buy-box']",
+    "[data-testid='installments']", ".ui-pdp-buybox",
+    ".ui-pdp-container__row--price", "[class*='installment']"
+  ];
+  const matched=[], regions=[];
+  const re=/\b(?:[2-9]|1\d|2[0-4])\s*x\s*(?:de\s*)?(?:R\$\s*)?\d{1,7}(?:[.]\d{3})*,\d{2}\s*(?:sem|com)\s+juros/gi;
+  for(const selector of selectors){
+    const nodes=[...document.querySelectorAll(selector)].slice(0,5);
+    let visible=0, signals=0;
+    for(const node of nodes){
+      if(!node.getClientRects?.().length)continue;
+      visible++;
+      const txt=String(node.innerText||"").slice(0,6000);
+      if(/\b(?:juros|parcelas?|cart[aã]o)\b/i.test(txt))signals++;
+      for(const part of txt.matchAll(re)){
+        const term=part[0].replace(/\s+/g," ").slice(0,70);
+        if(!matched.includes(term)&&matched.length<12)matched.push(term);
+      }
+    }
+    regions.push({selector,total:nodes.length,visible,paymentSignals:signals});
+  }
+  return {status:"DIAGNOSTICO_FINANCEIRO",regions,verifiedExpressions:matched};
+}
+async function diagnoseProduct(){
+  const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+  const tab=tabs[0];
+  if(!tab||!productUrl(tab.url))return {status:"ABRA_UM_PRODUTO_DO_MERCADO_LIVRE"};
+  try{
+    const [facts, details]=await Promise.all([
+      exec(tab.id,inspectFinancialRegions),exec(tab.id,productDetails)
+    ]);
+    return {
+      status:"DIAGNOSTICO_FINANCEIRO",
+      productStatus:details?.status||"SEM_RETORNO",
+      priceCents:details?.price_cents??null,
+      installmentsRead:details?.installment_count??null,
+      interestFreeRead:details?.installment_interest_free??null,
+      ...facts,
+      instruction:"Somente diagnostico local, sem publicacao ou envio de HTML."
+    };
+  }catch(_e){return {status:"DIAGNOSTICO_PRODUTO_FALHOU"};}
+}
+
 async function diagnoseSearch(){
   // One visible, user-initiated diagnostic tab. Does not generate a link,
   // talk to the native queue, or send anything to Telegram.
