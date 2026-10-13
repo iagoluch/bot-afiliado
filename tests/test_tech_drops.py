@@ -142,7 +142,7 @@ def test_real_charger_regression_no_false_smartphone_or_pix_claim():
     assert "Envio FULL anunciado" in body
     assert "Frete grátis" not in body
     assert "💳 Cartão: consulte o parcelamento no anúncio." in body
-    assert body.endswith("https://meli.la/2MWiFPG\\n\\n#publi".replace("\\\\n", "\\n"))
+    assert body.endswith("https://meli.la/2MWiFPG\n\n#publi")
 
 
 def test_nemotron_phone_hook_not_allowed_for_charger():
