@@ -44,6 +44,17 @@ def test_product_buybox_validation_with_cart_button_and_installments():
     assert "ML buy-box product validation cases OK" in result.stdout
 
 
+def test_user_initiated_payment_diagnostics_redact_private_page_data():
+    if shutil.which("node") is None:
+        pytest.skip("Node unavailable")
+    result=subprocess.run(
+        ["node", str(ROOT/"tests/js/test_ml_payment_diagnostics.js")],
+        cwd=ROOT, capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Read-only sanitized payment diagnostics OK" in result.stdout
+
+
 def test_actual_chrome_product_error_codes_are_visible():
     code=EXT.read_text(encoding="utf-8")
     assert 'status:"PURCHASE_CONTROL_MISSING"' in code

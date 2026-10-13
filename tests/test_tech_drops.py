@@ -84,7 +84,7 @@ def test_standard_price_does_not_claim_any_pix_terms_without_evidence():
     body = telegram_direct_message(ml_offer("Tablet VAIO TL12 8GB RAM"))
     assert "Pix" not in body
     assert "<b>R$ 589,00</b>" in body
-    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
+    assert "consulte o parcelamento" not in body
 
 
 @pytest.mark.parametrize(("title", "correct", "wrong"), [
@@ -141,7 +141,7 @@ def test_real_charger_regression_no_false_smartphone_or_pix_claim():
     assert "Previsão de entrega para amanhã" in body
     assert "Envio FULL anunciado" in body
     assert "Frete grátis" not in body
-    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
+    assert "consulte o parcelamento" not in body
     assert body.endswith("https://meli.la/2MWiFPG\n\n#publi")
 
 
@@ -210,8 +210,9 @@ def test_unverified_terms_are_never_invented():
     assert "R$ 589,00" in body
     assert "OFF" not in body
     assert "desconto" not in body.lower()
-    assert "💳 Cartão: consulte o parcelamento no anúncio." in body
+    assert "consulte o parcelamento" not in body
     assert "Parcelamento: 10x" not in body
+    assert "💳" not in body
     assert body.splitlines()[-1] == "#publi"
 
 

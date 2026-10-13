@@ -12,6 +12,9 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from app.services.product_profile import interpret_product
+from app.services.tech_drops import _valid_creative_hook
+
 API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = "nvidia/nemotron-3-super-120b-a12b"
 MAX_RESPONSE = 32768
@@ -47,13 +50,17 @@ def suggest_hook(
     """Return safe one-liner or None. Never sends product prices or links."""
     if not api_key or len(api_key) > 512 or not 3 <= len(product_title) <= 250:
         return None
+    profile = interpret_product(product_title)
+    if profile.confidence != "TITLE_MATCH":
+        return None
     system = (
         "Voce cria APENAS uma frase curta de convite em portugues brasileiro "
         "para divulgacao de produto de tecnologia em Telegram. Maximo 80 "
         "caracteres. TOM de entusiasta de tecnologia, criativo e natural. "
-        "Mencione explicitamente o TIPO DO PRODUTO (ex.: gabinete, Ryzen, "
-        "SSD, notebook ou mouse) e uma situacao de compra ou comparacao, "
-        "sem repetir o nome completo ou inventar atributos. "
+        "Mencione explicitamente APENAS O TIPO PRINCIPAL DO PRODUTO "
+        "identificado abaixo (nao o aparelho listado como compatibilidade). "
+        "Faça um convite breve e natural para comparar ou conferir o produto, "
+        "sem repetir o nome completo nem inventar atributos. "
         "Evite 'mais uma opcao de tecnologia', 'estilo unico', 'imperdivel' "
         "e frases que serviriam para qualquer produto. "
         "Sem dados factuais novos: nao afirme recursos tecnicos, compatibilidade, "
@@ -68,7 +75,12 @@ def suggest_hook(
             "model": MODEL,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": "Produto: " + product_title[:250]},
+                {"role": "user", "content": (
+                    "Tipo principal: " + profile.product_type +
+                    "\nCaracteristicas informadas no titulo: " +
+                    (", ".join(profile.features) if profile.features else "nenhuma especificacao comprovada") +
+                    "\nTitulo do anuncio: " + product_title[:250]
+                )},
             ],
             "max_tokens": 128,
             "temperature": 1.0,
@@ -104,7 +116,8 @@ def suggest_hook(
         result = json.loads(clean)
         if not isinstance(result, dict) or set(result) != {"hook"}:
             return None
-        return _sanitize_hook(result["hook"])
+        hook = _sanitize_hook(result["hook"])
+        return hook if _valid_creative_hook(profile, hook) else None
     except (
         urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
         OSError, UnicodeError, ValueError, TypeError, KeyError,
