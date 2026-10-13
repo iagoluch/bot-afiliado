@@ -1,210 +1,76 @@
-"""Deterministic, product-aware, claim-free marketing copy for ML Telegram.
+"""Concise Tech Drops editorial renderer using a structured product profile.
 
-Keep styling/creative language separate from verified commercial facts.
-The same offer always renders identically so the queue integrity check is stable.
+No category-specific phrase factories, inferred features or claims of savings.
+Payment, price, shipping and stock are handled by the verified offer renderer.
 """
 from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+
+from app.services.product_profile import ProductProfile, interpret_product
 
 
-@dataclass(frozen=True)
-class Style:
-    headlines: tuple[str, ...]
-    blurbs: tuple[str, ...]
-    relevance: str
-
-
-STYLES: tuple[tuple[str, Style], ...] = (
-    (r"\b(?:ryzen|processador|intel core|core i[3579]|cpu)\b", Style(
-        ("⚙️ PROCESSADOR NO RADAR!", "🧠 HORA DE OLHAR O PROCESSADOR!"),
-        ("Montando um PC? Vale colocar esse processador na comparação.",
-         "Procurando uma CPU para o seu projeto? Dá uma olhada neste modelo."),
-        r"\b(?:ryzen|cpu|processador|am4|intel)\b")),
-    (r"\bgabinete\b.*\b(?:aqu[aá]rio|vidro)\b", Style(
-        ("🧊 VISUAL AQUÁRIO NO SETUP!", "🖥️ GABINETE EM DESTAQUE!"),
-        ("Curte gabinete com vidro e visual aquário? Confira este modelo.",
-         "Quer comparar gabinetes com vidro para o setup? Olha essa opção."),
-        r"\b(?:gabinete|aqu[aá]rio|vidro)\b")),
-    (r"\bgabinete\b", Style(
-        ("🖥️ GABINETE NO RADAR!", "🧰 HORA DE PENSAR NO GABINETE!"),
-        ("Montando seu setup? Vale comparar esse gabinete.",
-         "Procurando gabinete para o PC? Olha esse modelo."),
-        r"\b(?:gabinete)\b")),
-    (r"\b(?:ssd|nvme|m\.2)\b", Style(
-        ("💾 SSD NO RADAR!", "💽 OLHO NO ARMAZENAMENTO!"),
-        ("Procurando SSD para o seu PC? Confira esse modelo.",
-         "Na lista de upgrades de armazenamento? Dá uma olhada nesse SSD."),
-        r"\b(?:ssd|nvme|armazenamento)\b")),
-    (r"\b(?:placa de v[ií]deo|gpu|geforce|radeon)\b", Style(
-        ("🎮 PLACA DE VÍDEO NA MIRA!", "🖥️ GPU NO RADAR!"),
-        ("Comparando placas de vídeo para o PC? Veja essa opção.",
-         "De olho em GPU para o seu setup? Coloque esse modelo na lista."),
-        r"\b(?:gpu|placa de v[ií]deo|geforce|radeon)\b")),
-    (r"\b(?:notebook|laptop)\b", Style(
-        ("💻 NOTEBOOK NA SELEÇÃO!", "💻 DE OLHO NOS NOTEBOOKS!"),
-        ("Pesquisando notebook? Coloque esse modelo na comparação.",
-         "Trabalho, estudo ou lazer: vale olhar as especificações desse notebook."),
-        r"\b(?:notebook|laptop)\b")),
-    (r"\b(?:celular|smartphone|iphone|galaxy)\b", Style(
-        ("📱 CELULAR NO RADAR!", "📲 SMARTPHONE NA SELEÇÃO!"),
-        ("Pensando em trocar de celular? Confira essa opção.",
-         "Comparando smartphones? Dá uma olhada neste modelo."),
-        r"\b(?:celular|smartphone|iphone|galaxy)\b")),
-    (r"\b(?:tablet|ipad)\b", Style(
-        ("📲 TABLET NO RADAR!", "📱 TABLET NA SELEÇÃO!"),
-        ("Procurando tablet? Vale comparar esse modelo.",
-         "De olho nos tablets? Confira esta opção."),
-        r"\b(?:tablet|ipad)\b")),
-    (r"\b(?:mem[oó]ria\s+ram|ddr[345]|ram)\b", Style(
-        ("🧠 MEMÓRIA RAM NA LISTA!", "🛠️ UPGRADES NA MIRA!"),
-        ("Pesquisando memória RAM para seu PC? Confira este modelo.",
-         "Montando a configuração do computador? Veja esta opção de RAM."),
-        r"\b(?:ram|mem[oó]ria|ddr)\b")),
-    (r"\bmonitor\b", Style(
-        ("🖥️ MONITOR NO RADAR!", "👀 DE OLHO NA TELA!"),
-        ("Comparando monitores para seu setup? Confira essa tela.",
-         "Procurando monitor novo? Vale conferir as especificações deste."),
-        r"\b(?:monitor|tela|display)\b")),
-    (r"\b(?:mouse)\b", Style(
-        ("🖱️ MOUSE NA SELEÇÃO!", "🖱️ PERIFÉRICO NO RADAR!"),
-        ("De olho num mouse para o setup? Confira esse modelo.",
-         "Comparando mouses? Vale colocar este na lista."),
-        r"\b(?:mouse|mouses|perif[eé]rico)\b")),
-    (r"\b(?:teclado)\b", Style(
-        ("⌨️ TECLADO NO RADAR!", "⌨️ PERIFÉRICO NA MIRA!"),
-        ("Procurando teclado para o PC? Confira esse modelo.",
-         "De olho nos teclados para o setup? Veja essa opção."),
-        r"\b(?:teclado|digita[cç][aã]o)\b")),
-    (r"\b(?:fones?|headset|headphones?|earbuds)\b", Style(
-        ("🎧 ÁUDIO NA SELEÇÃO!", "🎵 FONE NO RADAR!"),
-        ("Comparando fones de ouvido? Confira esse modelo.",
-         "Na busca por headset ou fone? Olha essa opção de áudio."),
-        r"\b(?:fone|headset|[aá]udio|ouvido)\b")),
-    (r"\b(?:cabos?|cord[aã]o\s+usb)\b", Style(
-        ("🔌 CABO NA SELEÇÃO!", "🔗 CONEXÃO NO RADAR!"),
-        ("Precisando de um cabo para o aparelho? Confira os conectores anunciados.",
-         "Buscando um cabo novo? Veja o tipo de conexão deste modelo."),
-        r"\b(?:cabo|usb|lightning|hdmi)\b")),
-    (r"\b(?:capinhas?|capas?|case)\b", Style(
-        ("📱 PROTEÇÃO NA SELEÇÃO!", "🛡️ CAPA NO RADAR!"),
-        ("Procurando uma capa para o aparelho? Confira esta opção.",
-         "Quer comparar capinhas? Veja o modelo e a compatibilidade informada."),
-        r"\b(?:capa|capinha|case|prote[cç][aã]o)\b")),
-    (r"\b(?:pel[ií]cula|protetor(?:a)?\s+de\s+tela)\b", Style(
-        ("🛡️ PELÍCULA NO RADAR!", "📱 PROTEÇÃO DE TELA NA LISTA!"),
-        ("Buscando uma película? Confira para quais modelos ela é indicada.",
-         "Comparando proteção de tela? Veja esta opção."),
-        r"\b(?:pel[ií]cula|prote[cç][aã]o|tela)\b")),
-    (r"\b(?:suportes?)\b", Style(
-        ("🧰 SUPORTE NA SELEÇÃO!", "📐 ACESSÓRIO NO RADAR!"),
-        ("Procurando suporte para organizar o setup? Confira este modelo.",
-         "Comparando suportes para seus aparelhos? Veja esta opção."),
-        r"\b(?:suporte|organizar)\b")),
-    (r"\b(?:power\s*bank|bateria\s+externa)\b", Style(
-        ("🔋 BATERIA PORTÁTIL NA LISTA!", "⚡ ENERGIA NO RADAR!"),
-        ("Buscando uma bateria externa? Confira a capacidade anunciada.",
-         "De olho em power banks? Veja este modelo."),
-        r"\b(?:power\s*bank|bateria|port[aá]til)\b")),
-    (r"\b(?:adaptador(?:es)?\s+(?:usb|tipo\s+c|hdmi|de\s+tomada|para\s+(?:celular|iphone|notebook))|hub\s+usb)\b", Style(
-        ("🔌 ADAPTADOR NO RADAR!", "🔗 CONEXÃO NA SELEÇÃO!"),
-        ("Procurando um adaptador? Confira os conectores anunciados.",
-         "Comparando adaptadores para o setup? Veja esta opção."),
-        r"\b(?:adaptador|conector|hub)\b")),
-    (r"\b(?:carregador(?:es)?|fonte\s+(?:usb|carregadora?|de\s+alimenta[cç][aã]o))\b", Style(
-        ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
-        ("Precisa de um carregador? Compare a potência e o conector anunciados.",
-         "Carregador novo no radar: confira se a conexão é a certa para seu aparelho."),
-        r"\b(?:carregador|carga)\b")),
-    (r"\b(?:placa.m[aã]e|motherboard)\b", Style(
-        ("🛠️ PLACA-MÃE NA LISTA!", "🧩 MONTAGEM DE PC NO RADAR!"),
-        ("Montando um PC? Confira essa placa-mãe.",
-         "Pesquisando placa-mãe para seu projeto? Veja esse modelo."),
-        r"\b(?:placa.m[aã]e|motherboard)\b")),
-    (r"\b(?:pendrive|pen drive)\b", Style(
-        ("💾 ARMAZENAMENTO NO RADAR!", "🔌 PENDRIVE NA LISTA!"),
-        ("Comparando pendrives? Confira esta opção.",
-         "Procurando pendrive? Vale ver este modelo."),
-        r"\b(?:pendrive|pen drive|armazenamento)\b")),
-    (r"\b(?:impressora)\b", Style(
-        ("🖨️ IMPRESSORA NA LISTA!", "🖨️ DE OLHO NA IMPRESSÃO!"),
-        ("Procurando impressora? Confira as características deste modelo.",
-         "Comparando impressoras? Vale olhar esta opção."),
-        r"\b(?:impressora|impress[aã]o)\b")),
-    (r"\b(?:webcam|c[aâ]mera)\b", Style(
-        ("📷 CÂMERA NO RADAR!", "📹 WEBCAM NA SELEÇÃO!"),
-        ("Pesquisando webcam ou câmera? Veja esta opção.",
-         "Comparando câmeras para o setup? Confira esse modelo."),
-        r"\b(?:c[aâ]mera|webcam|v[ií]deo)\b")),
-    (r"\b(?:microfone)\b", Style(
-        ("🎙️ MICROFONE NA LISTA!", "🎤 ÁUDIO NO RADAR!"),
-        ("Procurando microfone para seu setup? Olha este modelo.",
-         "Comparando microfones? Confira esta opção."),
-        r"\b(?:microfone)\b")),
-    (r"\b(?:smartwatch|rel[oó]gio\s+inteligente)\b", Style(
-        ("⌚ WEARABLE NA SELEÇÃO!", "⌚ RELÓGIO NO RADAR!"),
-        ("Pesquisando smartwatch? Confira esse modelo.",
-         "Comparando relógios inteligentes? Olha esta opção."),
-        r"\b(?:smartwatch|rel[oó]gio|wearable)\b")),
-    (r"\b(?:roteador|repetidor|wi-?fi|switch\s+gigabit)\b", Style(
-        ("📶 REDE NO RADAR!", "🌐 CONEXÃO NA LISTA!"),
-        ("Montando ou organizando a rede? Veja este equipamento.",
-         "Comparando equipamentos de rede? Confira este modelo."),
-        r"\b(?:rede|roteador|wi-?fi|conex[aã]o)\b")),
-)
-
-DEFAULT = Style(
-    ("🔎 TECH DROP NA ÁREA!", "📦 TECNOLOGIA NA SELEÇÃO!"),
-    ("Mais um produto para entrar na sua lista de comparação.",
-     "Na busca por tecnologia? Confira os detalhes deste produto."),
-    r"$^",
-)
-
-# Explicit seller codes are not useful in the Telegram headline. Do not
-# remove technical specs, brands, model names, colors or compatibility terms.
 _SELLER_CODE = re.compile(r"\b(?:100-\d{7,}[A-Z0-9]*|MLB-?\d{8,})\b", re.I)
 _UNTRUSTED_MARKUP = re.compile(r"[\x00-\x1f\x7f]+")
+_GENERIC = re.compile(
+    r"(?:mais uma op[cç][aã]o|op[cç][aã]o de tecnologia|"
+    r"estilo [uú]nico|produto imperd[ií]vel|confira esta oferta|"
+    r"pensando em trocar (?:de )?celular)",
+    re.I,
+)
+# Keep optional AI as a non-factual invitation, not a source of facts.
+_UNVERIFIED_CLAIM = re.compile(
+    r"\b(?:tem|possui|oferece|inclui|garante|melhor|perfeito|"
+    r"premium|excelente|resistente|imperme[aá]vel|original|"
+    r"aut[eê]ntico|certificado|ultrar[r]?[aá]pido)\b",
+    re.I,
+)
 
 
 def clean_title(raw: str, max_length: int = 106) -> str:
     value = " ".join(_SELLER_CODE.sub("", _UNTRUSTED_MARKUP.sub(" ", raw)).split())
     value = value.strip(" -|,;")
     if len(value) > max_length:
-        value = value[: max_length + 1].rsplit(" ", 1)[0].strip(" -|,;") + "…"
+        value = value[:max_length + 1].rsplit(" ", 1)[0].strip(" -|,;") + "…"
     return value or "Produto de tecnologia"
 
 
-def _style(title: str) -> Style:
-    """Choose the product itself, not the device named as compatibility.
+def _choice(identity: str, salt: str) -> int:
+    return hashlib.sha256((salt + ":" + identity).encode("utf-8")).digest()[0] % 2
 
-    Earlier versions selected the first matching *rule*: an accessory
-    "Carregador ... para iPhone" therefore incorrectly became a smartphone.
-    Prefer the first product noun in the title; only use rule order to break
-    ties at the same offset.
-    """
-    candidates = (
-        (match.start(), index, style)
-        for index, (pattern, style) in enumerate(STYLES)
-        if (match := re.search(pattern, title, re.I)) is not None
+
+def _valid_creative_hook(profile: ProductProfile, hook: str | None) -> bool:
+    if not hook or profile.confidence != "TITLE_MATCH":
+        return False
+    if _GENERIC.search(hook) or _UNVERIFIED_CLAIM.search(hook):
+        return False
+    # Product compatibility is never enough. "iPhone" inside a charger
+    # ad must not validate a copy referring to buying a smartphone.
+    return any(
+        re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", hook, re.I)
+        for alias in profile.category.aliases
     )
-    return min(candidates, default=(0, 0, DEFAULT), key=lambda x: (x[0], x[1]))[2]
-
-
-def _choice(options: tuple[str, ...], identity: str, salt: str) -> str:
-    digest = hashlib.sha256((salt + ":" + identity).encode("utf-8")).digest()
-    return options[digest[0] % len(options)]
 
 
 def creative_copy(title: str, identity: str, ai_hook: str | None = None) -> tuple[str, str]:
-    """Stable selection; require the AI line to actually relate to the product."""
-    style = _style(title)
-    heading = _choice(style.headlines, identity, "heading")
-    generic = bool(ai_hook and re.search(
-        r"\b(?:mais uma op[cç][aã]o|op[cç][aã]o de tecnologia|estilo [uú]nico|"
-        r"produto imperd[ií]vel|confira esta oferta)\b", ai_hook, re.I
-    ))
-    hook = ai_hook if (ai_hook and not generic
-                       and re.search(style.relevance, ai_hook, re.I)) else None
-    return heading, hook or _choice(style.blurbs, identity, "body")
+    """Render stable, grounded, non-repetitive copy using the same profile."""
+    profile = interpret_product(title)
+    category = profile.category
+    name = category.label.upper()
+    if category.code == "unknown":
+        heading = "🔎 TECH DROP NA ÁREA!"
+    elif _choice(identity, "headline"):
+        heading = f"{category.emoji} {name} NA SELEÇÃO!"
+    else:
+        heading = f"{category.emoji} {name} NO RADAR!"
+
+    if _valid_creative_hook(profile, ai_hook):
+        return heading, ai_hook or ""
+
+    # Literal facts only. A no-specification title should not produce a
+    # generic "Confira essa opção" paragraph pretending to be creativity.
+    if not profile.features:
+        return heading, ""
+    facts = " • ".join(profile.features)
+    return heading, f"{category.label.capitalize()}: {facts} anunciados no produto."
