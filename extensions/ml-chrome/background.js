@@ -242,11 +242,11 @@ function productDetails(){
     const shippingLines=shippingContext.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     const shippingFree=shippingLines.some(line=>
       /\bgr[aá]tis\b/i.test(line) &&
-      /\b(?:chegar[aá]|entrega|frete|envio)\b/i.test(line) &&
+      /\b(?:chegar[aá]|entrega|frete|envio)/i.test(line) &&
       !/(?:a partir de|acima de|compras (?:de|acima))/i.test(line));
     const shippingTomorrow=shippingLines.some(line=>
-      /\b(?:chegar[aá]|entrega|receba|receber)\b.{0,35}\bamanh[aã]\b/i.test(line) ||
-      /\bamanh[aã]\b.{0,35}\b(?:chegar[aá]|entrega)\b/i.test(line));
+      /\b(?:chegar[aá]|entrega|receba|receber).{0,35}\bamanh[aã](?:\s|$)/i.test(line) ||
+      /\bamanh[aã](?:\s|$).{0,35}\b(?:chegar[aá]|entrega)/i.test(line));
     const shippingFull=shippingLines.some(line=>/\bFULL\b/i.test(line));
     const shippingEvidence=(shippingFree||shippingTomorrow||shippingFull)
       ?"VISIBLE_DOM_SHIPPING_V1":null;
