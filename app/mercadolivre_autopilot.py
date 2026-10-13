@@ -306,6 +306,20 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
             or count * installment > details["price_cents"] * 2.5
         ):
             raise MLError("PARCELAMENTO_INVALIDO")
+    shipping_evidence = details.get("shipping_evidence")
+    shipping_free = details.get("shipping_free")
+    shipping_tomorrow = details.get("shipping_tomorrow")
+    shipping_full = details.get("shipping_full")
+    shipping_flags = (shipping_free, shipping_tomorrow, shipping_full)
+    if shipping_evidence is None:
+        if any(value is not None and value is not False for value in shipping_flags):
+            raise MLError("ENTREGA_SEM_COMPROVACAO")
+    elif (
+        shipping_evidence != "VISIBLE_DOM_SHIPPING_V1"
+        or any(type(value) is not bool for value in shipping_flags)
+        or not any(shipping_flags)
+    ):
+        raise MLError("ENTREGA_SEM_COMPROVACAO")
     timestamp = datetime.fromisoformat(details["confirmed_at"].replace("Z", "+00:00"))
     if (datetime.now(timezone.utc) - timestamp).total_seconds() > 300:
         raise MLError("VALIDACAO_DE_PRECO_EXPIRADA")
@@ -334,6 +348,10 @@ def _queue_validated_product(db: Database, settings: Settings, details: dict, af
             "installment_cents": installment,
             "installment_interest_free": interest_free,
             "installment_with_interest": with_interest,
+            "shipping_evidence": shipping_evidence,
+            "shipping_free": shipping_free is True,
+            "shipping_tomorrow": shipping_tomorrow is True,
+            "shipping_full": shipping_full is True,
             "ml_topic": details.get("ml_topic"),
             "copy_hook": details.get("copy_hook"),
             "copy_provider": "nemotron-3-super" if details.get("copy_hook") else "template",
