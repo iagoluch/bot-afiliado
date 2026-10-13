@@ -4,6 +4,7 @@ const enabled = document.getElementById("enabled");
 const once = document.getElementById("once");
 const register = document.getElementById("register");
 const diagnose = document.getElementById("diagnose");
+const diagnoseProduct = document.getElementById("diagnoseProduct");
 const send = (payload) => chrome.runtime.sendMessage(payload);
 async function refresh(){
   try{
@@ -33,6 +34,13 @@ diagnose.addEventListener("click",async()=>{
   const result=await send({action:"diagnoseSearch"}).catch(()=>({status:"DIAGNOSTICO_FALHOU"}));
   status.textContent=JSON.stringify(result,null,2);
   diagnose.disabled=false;
+});
+diagnoseProduct.addEventListener("click",async()=>{
+  diagnoseProduct.disabled=true;
+  status.textContent="Analisando somente parcelas e seletores visíveis nesta aba...";
+  const result=await send({action:"diagnoseProduct"}).catch(()=>({status:"DIAGNOSTICO_FALHOU"}));
+  status.textContent=JSON.stringify(result,null,2);
+  diagnoseProduct.disabled=false;
 });
 enabled.addEventListener("change",async()=>{
   const result=await send({action:"enable",enabled:enabled.checked}).catch(()=>({status:"ERRO"}));
