@@ -139,6 +139,23 @@ def _telegram_browser_message(offer: Mapping[str, Any]) -> str:
         # installments are available for this product/account.
         lines.append("💳 Vai pagar no cartão? Consulte se há parcelamento no anúncio.")
 
+    # Delivery is optional and location-specific. Never promise a date,
+    # shipping fee or fulfillment service without visible buy-box evidence.
+    shipping_evidence = metadata.get("shipping_evidence") == "VISIBLE_DOM_SHIPPING_V1"
+    shipping_free = shipping_evidence and metadata.get("shipping_free") is True
+    shipping_tomorrow = shipping_evidence and metadata.get("shipping_tomorrow") is True
+    shipping_full = shipping_evidence and metadata.get("shipping_full") is True
+    if shipping_free and shipping_tomorrow:
+        lines.append("🚚 Entrega grátis com previsão para amanhã*")
+    elif shipping_free:
+        lines.append("🚚 Frete grátis anunciado*")
+    elif shipping_tomorrow:
+        lines.append("🚚 Previsão de entrega para amanhã*")
+    if shipping_full:
+        lines.append("⚡ Envio FULL anunciado")
+    if shipping_free or shipping_tomorrow:
+        lines.append("<i>*Frete e prazo dependem do CEP. Confirme no anúncio.</i>")
+
     if discount:
         lines.append(f"📉 {discount[1]:.0f}% de queda verificada")
     if offer.get("coupon"):
