@@ -53,6 +53,11 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Pensando em trocar de celular? Confira essa opção.",
          "Comparando smartphones? Dá uma olhada neste modelo."),
         r"\b(?:celular|smartphone|iphone|galaxy)\b")),
+    (r"\b(?:tablet|ipad)\b", Style(
+        ("📲 TABLET NO RADAR!", "📱 TABLET NA SELEÇÃO!"),
+        ("Procurando tablet? Vale comparar esse modelo.",
+         "De olho nos tablets? Confira esta opção."),
+        r"\b(?:tablet|ipad)\b")),
     (r"\b(?:mem[oó]ria\s+ram|ddr[345]|ram)\b", Style(
         ("🧠 MEMÓRIA RAM NA LISTA!", "🛠️ UPGRADES NA MIRA!"),
         ("Pesquisando memória RAM para seu PC? Confira este modelo.",
@@ -78,11 +83,6 @@ STYLES: tuple[tuple[str, Style], ...] = (
         ("Comparando fones de ouvido? Confira esse modelo.",
          "Na busca por headset ou fone? Olha essa opção de áudio."),
         r"\b(?:fone|headset|[aá]udio|ouvido)\b")),
-    (r"\b(?:tablet|ipad)\b", Style(
-        ("📲 TABLET NO RADAR!", "📱 TABLET NA SELEÇÃO!"),
-        ("Procurando tablet? Vale comparar esse modelo.",
-         "De olho nos tablets? Confira esta opção."),
-        r"\b(?:tablet|ipad)\b")),
     (r"\b(?:carregador|fonte\s+usb)\b", Style(
         ("🔌 ACESSÓRIO NO RADAR!", "⚡ CARREGADOR NA SELEÇÃO!"),
         ("Procurando carregador? Confira esta opção.",

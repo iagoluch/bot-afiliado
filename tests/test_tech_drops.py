@@ -71,6 +71,22 @@ def test_previous_tech_drops_html_still_sets_parse_mode():
     assert "parse_mode" not in client._message_params("#publi\nplain text")
 
 
+def test_tablet_with_ram_and_keyboard_uses_tablet_copy():
+    product = "Tablet VAIO TL12 8GB RAM 256GB AMOLED com Teclado"
+    body = telegram_direct_message(ml_offer(product))
+    assert body.startswith("<b>📲 TABLET") or body.startswith("<b>📱 TABLET")
+    assert "tablet" in body.splitlines()[1].lower()
+    assert "Montando a configuração do computador" not in body
+    assert "MEMÓRIA RAM NA LISTA" not in body
+
+
+def test_standard_price_mentions_pix_without_unverified_pix_price():
+    body = telegram_direct_message(ml_offer("Tablet VAIO TL12 8GB RAM"))
+    assert "💠 Pix: confira o valor e as condições no checkout." in body
+    assert "R$ 589,00 no Pix" not in body
+    assert "<b>R$ 589,00</b>" in body
+
+
 def test_ryzen_sku_removed_but_valid_specs_kept():
     title = "Processador AMD Ryzen 5 4500 Box AM4 4.1GHz 11MB Cache S/ Vídeo Integrado - 100-100000644BOX"
     text = telegram_direct_message(ml_offer(title))

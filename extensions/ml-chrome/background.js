@@ -159,7 +159,11 @@ function productDetails(){
         }
       }catch(_e){}
       const whole=(node.querySelector(".andes-money-amount__fraction")?.textContent||"").replace(/[.\s]/g,"");
-      const part=(node.querySelector(".andes-money-amount__cents")?.textContent||"00").trim();
+      // A hidden cents span is not part of the advertised visible price.
+      const centsNode=node.querySelector(".andes-money-amount__cents");
+      const centsVisible=!centsNode?.getClientRects||
+        centsNode.getClientRects().length>0;
+      const part=(centsVisible?centsNode?.textContent:"00")?.trim()||"00";
       if(!/^\d{1,8}$/.test(whole)||!/^\d{1,2}$/.test(part))return null;
       const amount=Number(whole)*100+Number(part.padEnd(2,"0"));
       return Number.isSafeInteger(amount)&&amount>=100&&amount<=50000000?amount:null;
@@ -218,13 +222,30 @@ function productDetails(){
       }
       return texts.join("\n").slice(0,max);
     };
+    // Newer PDP layouts may render the installments as an adjacent sibling
+    // rather than under a known payment class. Inspect ONLY a few visible,
+    // bounded ancestors of the verified price box; never document.body.
+    // This catches actual 10x / sem juros text without reading unrelated
+    // recommendation cards across the page.
+    const nearby=[];
+    for(let ancestor=buybox.parentElement,level=0;
+      ancestor && level<5;ancestor=ancestor.parentElement,level++){
+      if(ancestor===document.body||ancestor===document.documentElement)break;
+      if(ancestor.getClientRects?.().length===0)continue;
+      const visible=String(ancestor.innerText||"").trim();
+      if(visible.length>0&&visible.length<=7000){
+        nearby.push(visible);
+        if(/\b(?:[2-9]|1\d|2[0-4])\s*x\s*(?:de\s*)?(?:R\$\s*)?\d/i.test(visible))break;
+      }
+    }
     const paymentContext=[context,readScoped([
       ".ui-pdp-price__subtitles", ".ui-pdp-price__subtitle",
       ".ui-pdp-price__part", ".ui-pdp-installments",
       ".ui-pdp-payment-methods", ".ui-pdp-buybox__price",
       ".ui-pdp-buybox__payments", "[data-testid='installments']",
-      "[data-testid='payment-methods']", ".ui-pdp-buybox"
-    ])].filter(Boolean).join("\n").slice(0,5000);
+      "[data-testid='payment-methods']", "[data-testid='buy-box']",
+      ".ui-pdp-container__row--price", ".ui-pdp-buybox"
+    ]),...nearby].filter(Boolean).join("\n").slice(0,11000);
     // Shipping is only read from a nearby explicit buy-box delivery section.
     // Phrases from ads/recommendation cards must never be treated as facts.
     let shippingContext=readScoped([

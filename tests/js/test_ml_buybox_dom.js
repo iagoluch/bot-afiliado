@@ -8,26 +8,31 @@ const from=src.indexOf("function productDetails(){");
 const to=src.indexOf("\nfunction isGenerator(){",from);
 assert(from>=0&&to>from);
 
-function amount(value,{old=false,visible=true}={}){
+function amount(value,{old=false,visible=true,centsVisible=true}={}){
   const div={
     getClientRects:()=>visible?[1]:[],
     closest:()=>old?{tagName:"DEL"}:null,
     parentElement:null,
     querySelector(selector){
       const t=selector.includes("fraction")?String(Math.floor(value/100)):String(value%100).padStart(2,"0");
-      return {textContent:t};
+      return {textContent:t,getClientRects:()=>selector.includes("cents")&&!centsVisible?[]:[1]};
     }
   };
   return div;
 }
 function fakePage({title="Notebook 15 polegadas",button="Adicionar ao carrinho",disabled=false,
   values=[302500],priceContext="R$ 3.025,00 no Pix",original=null,
-  paymentContext="",shippingContext="",shippingHidden=false,buyboxContext=""}={}){
-  const prices=values.map(v=>amount(v));
+  paymentContext="",shippingContext="",shippingHidden=false,buyboxContext="",
+  nearbyPriceText="",hiddenCents=false}={}){
+  const prices=values.map(v=>amount(v,{centsVisible:!hiddenCents}));
   if(original!==null)prices.unshift(amount(original,{old:true}));
   const cta={textContent:button,value:"",getAttribute:()=>null,disabled,
     getClientRects:()=>[1]};
-  const box={innerText:priceContext};
+  const box={innerText:priceContext,
+    parentElement:nearbyPriceText?{
+      innerText:nearbyPriceText,parentElement:null,getClientRects:()=>[1]
+    }:null
+  };
   return {
     querySelector(selector){
       if(selector.startsWith("h1"))return {textContent:title};
@@ -196,6 +201,53 @@ const conditionalFree=check(fakePage({
 }));
 assert.equal(conditionalFree.shipping_free,false);
 assert.equal(conditionalFree.shipping_evidence,null);
+
+// Regression: newer ML buy boxes render 10x/sem juros as a price-box
+// sibling without a class included in our static selector list.
+const vaioTablet=check(fakePage({
+  title:"Tablet VAIO TL12 8GB RAM 256GB Tela AMOLED",
+  values:[348926],priceContext:"R$ 3.489,26",
+  nearbyPriceText:"Tablet VAIO TL12\nR$ 3.489,26\n10x R$ 348,93 sem juros",
+  shippingContext:"Chegará grátis amanhã\n⚡ FULL"
+}));
+assert.equal(vaioTablet.status,"VALIDATED");
+assert.equal(vaioTablet.price_cents,348926);
+assert.equal(vaioTablet.installment_count,10);
+assert.equal(vaioTablet.installment_cents,34893);
+assert.equal(vaioTablet.installment_interest_free,true);
+assert.equal(vaioTablet.price_payment_method,"STANDARD");
+assert.equal(vaioTablet.shipping_free,true);
+assert.equal(vaioTablet.shipping_full,true);
+
+const hiddenCents=check(fakePage({
+  values:[348926],priceContext:"R$ 3.489",hiddenCents:true
+}));
+assert.equal(hiddenCents.price_cents,348900);
+assert.equal(hiddenCents.status,"VALIDATED");
+
+const noGlobalPayment=check(fakePage({
+  values:[348900],priceContext:"R$ 3.489,00",
+  nearbyPriceText:"R$ 3.489,00",
+  paymentContext:""
+}));
+assert.equal(noGlobalPayment.installment_count,null);
+
+// Never use a broad body ancestor as proof of installment offers.
+const mockBodyScope=fakePage({
+  values:[348900],priceContext:"R$ 3.489,00"
+});
+const originalQuery=mockBodyScope.querySelector.bind(mockBodyScope);
+const bodyAncestor={innerText:"10x R$ 348,90 sem juros",parentElement:null,
+  getClientRects:()=>[1]};
+mockBodyScope.querySelector=(selector)=>{
+  const result=originalQuery(selector);
+  if(selector.includes("ui-pdp-price")&&result){
+    result.parentElement=bodyAncestor;
+  }
+  return result;
+};
+mockBodyScope.body=bodyAncestor;
+assert.equal(check(mockBodyScope).installment_count,null);
 
 const noBuy=check(fakePage({button:"Comprar indisponível"}));
 assert.equal(noBuy.status,"PURCHASE_CONTROL_MISSING");
