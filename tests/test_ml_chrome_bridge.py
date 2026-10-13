@@ -280,6 +280,51 @@ def test_invalid_installment_payload_never_enters_queue(tmp_path, term_changes):
     assert not db.rows("SELECT id FROM offers")
 
 
+def test_real_monitor_card_delivery_metadata_reaches_telegram(tmp_path):
+    from app.services.content import telegram_direct_message
+    from app.services.curation import verified_offer_data
+
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    candidate = record(
+        title="Monitor Gamer Dell Alienware 25 IPS 320Hz G-Sync",
+        price_cents=172796, price_payment_method="STANDARD",
+        installment_count=10, installment_cents=17280,
+        installment_interest_free=True, installment_with_interest=False,
+        shipping_evidence="VISIBLE_DOM_SHIPPING_V1",
+        shipping_free=True, shipping_tomorrow=True, shipping_full=True,
+    )
+    candidate["topic"] = "monitor"
+    assert process(candidate, settings=conf, db=db)["status"] == "QUEUED_FOR_WORKER"
+    offer_id = db.rows("SELECT id FROM offers ORDER BY id DESC LIMIT 1")[0]["id"]
+    body = telegram_direct_message(verified_offer_data(db, offer_id))
+    assert "R$ 1.727,96" in body
+    assert "no Pix" not in body
+    assert "Parcelamento: 10x de R$ 172,80 sem juros" in body
+    assert "Entrega grátis com previsão para amanhã" in body
+    assert "FULL anunciado" in body
+    assert "dependem do CEP" in body
+    assert body.endswith("#publi")
+
+
+@pytest.mark.parametrize("updates", [
+    {"shipping_evidence": "VISIBLE_DOM_SHIPPING_V1", "shipping_free": "true",
+     "shipping_tomorrow": False, "shipping_full": False},
+    {"shipping_evidence": "VISIBLE_DOM_SHIPPING_V1", "shipping_free": False,
+     "shipping_tomorrow": False, "shipping_full": False},
+    {"shipping_evidence": "UNKNOWN", "shipping_free": True,
+     "shipping_tomorrow": False, "shipping_full": False},
+    {"shipping_evidence": None, "shipping_free": True},
+    {"shipping_evidence": None, "shipping_free": "false"},
+])
+def test_bridge_rejects_unverified_shipping_claims(tmp_path, updates):
+    conf = settings(tmp_path, real=True)
+    db = Database(conf.database_path)
+    candidate = record(**updates)
+    assert process(candidate, settings=conf, db=db)["status"] == "BLOCKED"
+    assert not db.rows("SELECT id FROM offers")
+
+
 def test_distinct_ml_topics_publish_immediately_without_hourly_or_generic_category_pause(tmp_path):
     from dataclasses import replace
     from threading import Event

@@ -21,7 +21,8 @@ function amount(value,{old=false,visible=true}={}){
   return div;
 }
 function fakePage({title="Notebook 15 polegadas",button="Adicionar ao carrinho",disabled=false,
-  values=[302500],priceContext="R$ 3.025,00 no Pix",original=null}={}){
+  values=[302500],priceContext="R$ 3.025,00 no Pix",original=null,
+  paymentContext="",shippingContext="",shippingHidden=false,buyboxContext=""}={}){
   const prices=values.map(v=>amount(v));
   if(original!==null)prices.unshift(amount(original,{old:true}));
   const cta={textContent:button,value:"",getAttribute:()=>null,disabled,
@@ -35,6 +36,12 @@ function fakePage({title="Notebook 15 polegadas",button="Adicionar ao carrinho",
     },
     querySelectorAll(selector){
       if(selector.startsWith("button"))return [cta];
+      if(selector===".ui-pdp-price__subtitles"&&paymentContext)
+        return [{innerText:paymentContext,getClientRects:()=>[1]}];
+      if(selector===".ui-pdp-shipping"&&shippingContext)
+        return [{innerText:shippingContext,getClientRects:()=>shippingHidden?[]:[1]}];
+      if(selector===".ui-pdp-buybox"&&buyboxContext)
+        return [{innerText:buyboxContext,getClientRects:()=>[1]}];
       if(selector.includes("__second-line"))return prices;
       if(selector.includes("andes-money-amount"))return [...prices];
       return [];
@@ -149,6 +156,46 @@ const misleading=check(fakePage({
 }));
 assert.equal(misleading.installment_count,12);
 assert.equal(misleading.installment_with_interest,true);
+
+// Real layout: the visible price box contains only the price, while card
+// financing and shipping are in sibling buy-box elements.
+const alienware=check(fakePage({
+  title:"Monitor Gamer Dell Alienware 25 IPS 320Hz G-Sync Pivot",
+  values:[172796], priceContext:"R$ 1.727,96",
+  paymentContext:"10x R$ 172,80 sem juros",
+  shippingContext:"Chegará grátis amanhã\n⚡ FULL"
+}));
+assert.equal(alienware.status,"VALIDATED");
+assert.equal(alienware.price_cents,172796);
+assert.equal(alienware.price_payment_method,"STANDARD");
+assert.equal(alienware.installment_count,10);
+assert.equal(alienware.installment_cents,17280);
+assert.equal(alienware.installment_interest_free,true);
+assert.equal(alienware.shipping_evidence,"VISIBLE_DOM_SHIPPING_V1");
+assert.equal(alienware.shipping_free,true);
+assert.equal(alienware.shipping_tomorrow,true);
+assert.equal(alienware.shipping_full,true);
+
+const hiddenShipping=check(fakePage({
+  values:[172796],priceContext:"R$ 1.727,96",
+  shippingContext:"Chegará grátis amanhã\n⚡ FULL",shippingHidden:true,
+}));
+assert.equal(hiddenShipping.shipping_evidence,null);
+assert.equal(hiddenShipping.shipping_free,false);
+
+const unrelatedPayment=check(fakePage({
+  values:[172796],priceContext:"R$ 1.727,96",
+  buyboxContext:"10x de R$ 172,80 sem juros\nFrete grátis anunciado"
+}));
+assert.equal(unrelatedPayment.installment_count,10);
+assert.equal(unrelatedPayment.shipping_free,true);
+
+const conditionalFree=check(fakePage({
+  values:[172796],priceContext:"R$ 1.727,96",
+  shippingContext:"Frete grátis em compras acima de R$ 199"
+}));
+assert.equal(conditionalFree.shipping_free,false);
+assert.equal(conditionalFree.shipping_evidence,null);
 
 const noBuy=check(fakePage({button:"Comprar indisponível"}));
 assert.equal(noBuy.status,"PURCHASE_CONTROL_MISSING");
