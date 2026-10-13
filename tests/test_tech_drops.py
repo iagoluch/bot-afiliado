@@ -132,6 +132,29 @@ def test_unverified_terms_are_never_invented():
     assert body.splitlines()[-1] == "#publi"
 
 
+def test_delivery_copy_is_not_invented_without_evidence():
+    offer = ml_offer("Monitor Gamer Alienware 25 polegadas")
+    text = telegram_direct_message(offer)
+    assert "Entrega grátis" not in text
+    assert "amanhã" not in text
+    assert "FULL" not in text
+    assert "no Pix" not in text
+
+
+def test_delivery_copy_does_not_trust_unverified_metadata():
+    offer = ml_offer("Monitor Gamer Alienware 25 polegadas", tracking_metadata={
+        "price_evidence": "VISIBLE_DOM_PRICE_V2",
+        "price_payment_method": "STANDARD",
+        "shipping_free": True,
+        "shipping_tomorrow": True,
+        "shipping_full": True,
+    })
+    text = telegram_direct_message(offer)
+    assert "Entrega grátis" not in text
+    assert "FULL" not in text
+    assert "amanhã" not in text
+
+
 def test_different_products_can_have_different_headlines():
     a = [creative_copy("SSD NVMe 1TB", f"MLB{i}")[0] for i in range(25)]
     assert len(set(a)) > 1
