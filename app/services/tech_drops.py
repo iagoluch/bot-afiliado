@@ -73,4 +73,10 @@ def creative_copy(title: str, identity: str, ai_hook: str | None = None) -> tupl
     if not profile.features:
         return heading, ""
     facts = " • ".join(profile.features)
-    return heading, f"{category.label.capitalize()}: {facts} anunciados no produto."
+    descriptions = (
+        f"{category.label.capitalize()} com {facts} informados no anúncio.",
+        f"Nos detalhes deste {category.label}: {facts}.",
+        f"Na seleção de {category.label}: {facts} em destaque na descrição.",
+    )
+    slot = hashlib.sha256(("body:" + identity).encode("utf-8")).digest()[0] % len(descriptions)
+    return heading, descriptions[slot]
