@@ -203,13 +203,60 @@ function productDetails(){
     if(values.length===2&&pixMention&&!otherMention){
       return {status:"UNLABELED_ALTERNATIVE_PRICE"};
     }
+    // Mercado Livre often renders the card installment OUTSIDE the primary
+    // .ui-pdp-price block, in a subtitle/payment section of the SAME buy box.
+    // Read only visible, scoped purchase-area DOM. Never scan recommended
+    // products or the whole document body.
+    const readScoped=(selectors,max=3500)=>{
+      const texts=[];
+      for(const selector of selectors){
+        for(const node of [...document.querySelectorAll(selector)].slice(0,6)){
+          if(!node.getClientRects?.().length)continue;
+          const value=String(node.innerText||node.textContent||"").slice(0,1500).trim();
+          if(value&&!texts.includes(value))texts.push(value);
+        }
+      }
+      return texts.join("\n").slice(0,max);
+    };
+    const paymentContext=[context,readScoped([
+      ".ui-pdp-price__subtitles", ".ui-pdp-price__subtitle",
+      ".ui-pdp-price__part", ".ui-pdp-installments",
+      ".ui-pdp-payment-methods", ".ui-pdp-buybox__price",
+      ".ui-pdp-buybox__payments", "[data-testid='installments']",
+      "[data-testid='payment-methods']", ".ui-pdp-buybox"
+    ])].filter(Boolean).join("\n").slice(0,5000);
+    // Shipping is only read from a nearby explicit buy-box delivery section.
+    // Phrases from ads/recommendation cards must never be treated as facts.
+    let shippingContext=readScoped([
+      ".ui-pdp-shipping", ".ui-pdp-delivery",
+      ".ui-pdp-buybox__shipping", ".ui-pdp-buybox__shipping-info",
+      "[data-testid='shipping-info']", "[data-testid='shipping-details']",
+      "[data-testid='delivery-info']"
+    ],2400);
+    if(!shippingContext){
+      shippingContext=readScoped([".ui-pdp-buybox"],1500)
+        .split(/\r?\n/).map(s=>s.trim())
+        .filter(s=>/(?:chegar[aá]|entrega|frete|envio|FULL)/i.test(s))
+        .join("\n").slice(0,650);
+    }
+    const shippingLines=shippingContext.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const shippingFree=shippingLines.some(line=>
+      /\bgr[aá]tis\b/i.test(line) &&
+      /\b(?:chegar[aá]|entrega|frete|envio)\b/i.test(line) &&
+      !/(?:a partir de|acima de|compras (?:de|acima))/i.test(line));
+    const shippingTomorrow=shippingLines.some(line=>
+      /\b(?:chegar[aá]|entrega|receba|receber)\b.{0,35}\bamanh[aã]\b/i.test(line) ||
+      /\bamanh[aã]\b.{0,35}\b(?:chegar[aá]|entrega)\b/i.test(line));
+    const shippingFull=shippingLines.some(line=>/\bFULL\b/i.test(line));
+    const shippingEvidence=(shippingFree||shippingTomorrow||shippingFull)
+      ?"VISIBLE_DOM_SHIPPING_V1":null;
     // Only explicitly labelled, visible plans are eligible. Prefer the
     // LOWEST monthly payment with no interest among verified plans; use an
     // explicitly interest-bearing plan only if no safe free plan exists.
     // Never calculate a made-up installment from the cash/Pix price.
     const plans=[];
     const installmentRe=/\b([2-9]|1\d|2[0-4])\s*x\s*(?:de\s*)?(?:R\$\s*)?([0-9]{1,8}(?:\.[0-9]{3})*,[0-9]{2})\b([^\r\n]{0,28})/gi;
-    for(const match of context.matchAll(installmentRe)){
+    for(const match of paymentContext.matchAll(installmentRe)){
       const count=Number(match[1]);
       const [whole,cents]=match[2].replace(/\./g,"").split(",");
       const amount=Number(whole)*100+Number(cents);
@@ -240,6 +287,10 @@ function productDetails(){
       installment_cents:plan?plan.amount:null,
       installment_interest_free:plan?plan.interestFree:null,
       installment_with_interest:plan?plan.withInterest:null,
+      shipping_evidence:shippingEvidence,
+      shipping_free:shippingFree,
+      shipping_tomorrow:shippingTomorrow,
+      shipping_full:shippingFull,
       price_evidence:"VISIBLE_DOM_PRICE_V2",
       price_source:tierUsed};
   }
